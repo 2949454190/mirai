@@ -157,7 +157,7 @@ internal class GroupImpl(
     }
 
     @OptIn(ExperimentalTime::class)
-    override suspend fun uploadImage(resource: ExternalResource): Image {
+    override suspend fun uploadImage(resource: ExternalResource): Image = resource.withAutoClose {
         if (BeforeImageUploadEvent(this, resource).broadcast().isCancelled) {
             throw EventCancelledException("cancelled by BeforeImageUploadEvent.ToGroup")
         }
@@ -208,7 +208,7 @@ internal class GroupImpl(
     }
 
     @Suppress("OverridingDeprecatedMember", "DEPRECATION")
-    override suspend fun uploadVoice(resource: ExternalResource): Voice {
+    override suspend fun uploadVoice(resource: ExternalResource): Voice = resource.withAutoClose {
         return bot.network.run {
             uploadAudioResource(resource)
 
@@ -253,7 +253,7 @@ internal class GroupImpl(
         }.getOrThrow()
     }
 
-    override suspend fun uploadAudio(resource: ExternalResource): OfflineAudio {
+    override suspend fun uploadAudio(resource: ExternalResource): OfflineAudio = resource.withAutoClose {
         return bot.network.run {
             uploadAudioResource(resource)
 
