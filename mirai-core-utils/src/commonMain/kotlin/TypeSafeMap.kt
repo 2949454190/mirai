@@ -16,16 +16,18 @@ import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 
 @JvmInline
-public value class TypeKey<out T>(public val name: String) {
+public value class TypeKey<T>(public val name: String) {
     override fun toString(): String = "Key($name)"
 
-    public inline infix fun <T> to(value: T): TypeSafeMap = buildTypeSafeMap { set(this@TypeKey, value) }
+    public inline infix fun to(value: T): TypeSafeMap =
+        buildTypeSafeMap { set(this@TypeKey, value) }
 }
 
 public interface TypeSafeMap {
     public val size: Int
 
-    public operator fun <T> get(key: TypeKey<T>): T
+    public operator fun <T> get(key: TypeKey<T>): T = getOrNull(key) ?: throw NoSuchElementException(key.toString())
+    public fun <T> getOrNull(key: TypeKey<T>): T?
     public operator fun <T> contains(key: TypeKey<T>): Boolean = get(key) != null
 
     public fun toMap(): Map<TypeKey<*>, Any?>
@@ -66,8 +68,7 @@ internal open class TypeSafeMapImpl(
         return map.hashCode()
     }
 
-    override operator fun <T> get(key: TypeKey<T>): T =
-        map[key]?.uncheckedCast() ?: throw NoSuchElementException(key.toString())
+    override fun <T> getOrNull(key: TypeKey<T>): T? = map[key]?.uncheckedCast()
 
     override operator fun <T> contains(key: TypeKey<T>): Boolean = get(key) != null
 
