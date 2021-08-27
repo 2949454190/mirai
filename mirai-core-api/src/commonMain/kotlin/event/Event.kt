@@ -156,7 +156,7 @@ internal open class _EventBroadcast {
         @JvmStatic
         var implementation: _EventBroadcast = _EventBroadcast()
 
-        private val SHOW_VERBOSE_EVENT_ALWAYS = systemProp("mirai.event.show.verbose.event", false)
+        private val SHOW_VERBOSE_EVENT_ALWAYS = systemProp("mirai.event.show.verbose.events", false)
     }
 
     open suspend fun <E : Event> broadcastPublic(event: E): E = event.apply { Mirai.broadcastEvent(this) }
