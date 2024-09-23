@@ -1,18 +1,18 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:Suppress("unused")
 @file:JvmMultifileClass
 @file:JvmName("Utils")
 
 package net.mamoe.mirai.utils
 
+import me.him188.kotlin.dynamic.delegation.dynamicDelegation
 import java.util.*
 import kotlin.reflect.KClass
 
@@ -21,6 +21,7 @@ import kotlin.reflect.KClass
  */
 @JvmOverloads
 public fun MiraiLogger.withSwitch(default: Boolean = true): MiraiLoggerWithSwitch = MiraiLoggerWithSwitch(this, default)
+
 
 /**
  * 日志记录器.
@@ -33,7 +34,7 @@ public fun MiraiLogger.withSwitch(default: Boolean = true): MiraiLoggerWithSwitc
  *
  * ## 使用第三方日志库接管 Mirai 日志系统
  *
- * 使用 [LoggerAdapters], 将第三方日志 `Logger` 转为 [MiraiLogger]. 然后通过 [MiraiLogger.setDefaultLoggerCreator] 全局覆盖日志.
+ * 使用 [LoggerAdapters], 将第三方日志 `Logger` 转为 [MiraiLogger]. 然后通过 [MiraiLogger.Factory] 提供实现.
  *
  * ## 实现或使用 [MiraiLogger]
  *
@@ -85,7 +86,8 @@ public interface MiraiLogger {
          */
         public fun create(requester: Class<*>): MiraiLogger = create(requester, null)
 
-        public companion object INSTANCE : Factory by loadService(Factory::class, { DefaultFactory() })
+        public companion object INSTANCE :
+            Factory by dynamicDelegation({ MiraiLoggerFactoryImplementationBridge })
     }
 
     public companion object {
@@ -94,34 +96,37 @@ public interface MiraiLogger {
          */
         @MiraiInternalApi
         @MiraiExperimentalApi
-        @Deprecated("Deprecated.") // deprecated since 2.7
+        @Deprecated("Deprecated.", level = DeprecationLevel.HIDDEN) // deprecated since 2.7
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
         public val TopLevel: MiraiLogger by lazy { Factory.create(MiraiLogger::class, "Mirai") }
 
         /**
          * 已弃用, 请实现 service [net.mamoe.mirai.utils.MiraiLogger.Factory] 并以 [ServiceLoader] 支持的方式提供.
          */
-        @Suppress("DeprecatedCallableAddReplaceWith")
         @Deprecated(
             "Please set factory by providing an service of type net.mamoe.mirai.utils.MiraiLogger.Factory",
-            level = DeprecationLevel.WARNING
+            level = DeprecationLevel.HIDDEN
         ) // deprecated since 2.7
         @JvmStatic
-        public fun setDefaultLoggerCreator(creator: (identity: String?) -> MiraiLogger) {
-            DefaultFactoryOverrides.override { _, identity -> creator(identity) }
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.13")
+        public fun setDefaultLoggerCreator(@Suppress("UNUSED_PARAMETER") creator: (identity: String?) -> MiraiLogger) {
+            // nop
+
+
+//            DefaultFactoryOverrides.override { _, identity -> creator(identity) }
         }
 
         /**
          * 旧版本用于创建 [MiraiLogger]. 已弃用. 请使用 [MiraiLogger.Factory.INSTANCE.create].
-         *
-         * @see setDefaultLoggerCreator
          */
         @Deprecated(
             "Please use MiraiLogger.Factory.create", ReplaceWith(
                 "MiraiLogger.Factory.create(YourClass::class, identity)",
                 "net.mamoe.mirai.utils.MiraiLogger"
-            ), level = DeprecationLevel.WARNING
+            ), level = DeprecationLevel.HIDDEN
         ) // deprecated since 2.7
         @JvmStatic
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
         public fun create(identity: String?): MiraiLogger = Factory.create(MiraiLogger::class, identity)
     }
 
@@ -197,18 +202,9 @@ public interface MiraiLogger {
      */
     public val isErrorEnabled: Boolean get() = isEnabled
 
-    /**
-     * 随从. 在 this 中调用所有方法后都应继续往 [follower] 传递调用.
-     * [follower] 的存在可以让一次日志被多个日志记录器记录.
-     *
-     * 一般不建议直接修改这个属性. 请通过 [plus] 来连接两个日志记录器.
-     * 如: `val logger = bot.logger + MyLogger()`
-     * 当调用 `logger.info()` 时, `bot.logger` 会首先记录, `MyLogger` 会随后记录.
-     *
-     * 当然, 多个 logger 也可以加在一起: `val logger = bot.logger + MynLogger() + MyLogger2()`
-     */
     @Suppress("UNUSED_PARAMETER")
-    @Deprecated("follower 设计不佳, 请避免使用", level = DeprecationLevel.WARNING) // deprecated since 2.7
+    @Deprecated("follower 设计不佳, 请避免使用", level = DeprecationLevel.HIDDEN) // deprecated since 2.7
+    @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
     public var follower: MiraiLogger?
         get() = null
         set(value) {}
@@ -258,26 +254,14 @@ public interface MiraiLogger {
     public fun error(message: String?, e: Throwable?)
 
     /** 根据优先级调用对应函数 */
-    public fun call(priority: SimpleLogger.LogPriority, message: String? = null, e: Throwable? = null): Unit =
-        priority.correspondingFunction(this, message, e)
 
-    /**
-     * 添加一个 [follower], 返回 [follower]
-     * 它只会把 `this` 的属性 [MiraiLogger.follower] 修改为这个函数的参数 [follower], 然后返回这个参数.
-     * 若 [MiraiLogger.follower] 已经有值, 则会替换掉这个值.
-     * ```
-     *   +------+      +----------+      +----------+      +----------+
-     *   | base | <--  | follower | <--  | follower | <--  | follower |
-     *   +------+      +----------+      +----------+      +----------+
-     * ```
-     *
-     * @return [follower]
-     */
-    @Suppress("DeprecatedCallableAddReplaceWith")
-    @Deprecated("plus 设计不佳, 请避免使用.", level = DeprecationLevel.WARNING) // deprecated since 2.7
+    public fun call(priority: SimpleLogger.LogPriority, message: String? = null, e: Throwable? = null): Unit =
+        @OptIn(MiraiExperimentalApi::class) priority.correspondingFunction(this, message, e)
+
+    @Deprecated("plus 设计不佳, 请避免使用.", level = DeprecationLevel.HIDDEN) // deprecated since 2.7
+    @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
     public operator fun <T : MiraiLogger> plus(follower: T): T = follower
 }
-
 
 public inline fun MiraiLogger.verbose(message: () -> String) {
     if (isVerboseEnabled) verbose(message())
@@ -340,7 +324,7 @@ public inline fun MiraiLogger.error(message: () -> String?, e: Throwable?) {
  *
  * 严重程度为 V, I, W, E. 分别对应 verbose, info, warning, error
  *
- * @see MiraiLogger.create
+ * @see MiraiLogger.Factory.create
  */
 @MiraiInternalApi
 public expect open class PlatformLogger @JvmOverloads constructor(
@@ -350,9 +334,23 @@ public expect open class PlatformLogger @JvmOverloads constructor(
 /**
  * 不做任何事情的 logger, keep silent.
  */
+@OptIn(MiraiInternalApi::class)
 @Suppress("unused")
 public object SilentLogger : PlatformLogger() {
     public override val identity: String? = null
+
+    override val isEnabled: Boolean
+        get() = false
+    override val isVerboseEnabled: Boolean
+        get() = false
+    override val isDebugEnabled: Boolean
+        get() = false
+    override val isInfoEnabled: Boolean
+        get() = false
+    override val isWarningEnabled: Boolean
+        get() = false
+    override val isErrorEnabled: Boolean
+        get() = false
 
     public override fun error0(message: String?): Unit = Unit
     public override fun debug0(message: String?): Unit = Unit
@@ -455,7 +453,7 @@ public class MiraiLoggerWithSwitch internal constructor(private val delegate: Mi
 }
 
 /**
- * 日志基类. 实现了 [follower] 的调用传递.
+ * 日志基类.
  * 若 Mirai 自带的日志系统无法满足需求, 请继承这个类或 [PlatformLogger] 并实现其抽象函数.
  *
  * 这个类不应该被用作变量的类型定义. 只应被作为继承对象.
@@ -464,71 +462,57 @@ public class MiraiLoggerWithSwitch internal constructor(private val delegate: Mi
  * @see PlatformLogger
  * @see SimpleLogger
  */
-@Suppress("DEPRECATION")
+@Suppress("DEPRECATION_ERROR")
 public abstract class MiraiLoggerPlatformBase : MiraiLogger {
     public override val isEnabled: Boolean get() = true
 
-    @Suppress("OverridingDeprecatedMember")
-    @Deprecated("follower 设计不佳, 请避免使用", level = DeprecationLevel.WARNING) // deprecated since 2.7
-    public final override var follower: MiraiLogger? = null
-
     public final override fun verbose(message: String?) {
         if (!isEnabled) return
-        follower?.verbose(message)
         verbose0(message)
     }
 
     public final override fun verbose(message: String?, e: Throwable?) {
         if (!isEnabled) return
-        follower?.verbose(message, e)
         verbose0(message, e)
     }
 
     public final override fun debug(message: String?) {
         if (!isEnabled) return
-        follower?.debug(message)
         debug0(message)
     }
 
     public final override fun debug(message: String?, e: Throwable?) {
         if (!isEnabled) return
-        follower?.debug(message, e)
         debug0(message, e)
     }
 
     public final override fun info(message: String?) {
         if (!isEnabled) return
-        follower?.info(message)
         info0(message)
     }
 
     public final override fun info(message: String?, e: Throwable?) {
         if (!isEnabled) return
-        follower?.info(message, e)
         info0(message, e)
     }
 
     public final override fun warning(message: String?) {
         if (!isEnabled) return
-        follower?.warning(message)
         warning0(message)
     }
 
     public final override fun warning(message: String?, e: Throwable?) {
         if (!isEnabled) return
-        follower?.warning(message, e)
         warning0(message, e)
     }
 
     public final override fun error(message: String?) {
         if (!isEnabled) return
-        follower?.error(message)
         error0(message)
     }
 
     public final override fun error(message: String?, e: Throwable?) {
         if (!isEnabled) return
-        follower?.error(message, e)
         error0(message, e)
     }
 
@@ -542,35 +526,4 @@ public abstract class MiraiLoggerPlatformBase : MiraiLogger {
     protected abstract fun warning0(message: String?, e: Throwable?)
     protected open fun error0(message: String?): Unit = error0(message, null)
     protected abstract fun error0(message: String?, e: Throwable?)
-
-    @Suppress("OverridingDeprecatedMember")
-    @Deprecated("plus 设计不佳, 请避免使用.", level = DeprecationLevel.WARNING) // deprecated since 2.7
-    public override operator fun <T : MiraiLogger> plus(follower: T): T {
-        this.follower = follower
-        return follower
-    }
-}
-
-internal object DefaultFactoryOverrides {
-    var override: ((requester: Class<*>, identity: String?) -> MiraiLogger)? =
-        null // 支持 LoggerAdapters 以及兼容旧版本
-
-    @JvmStatic
-    fun override(lambda: (requester: Class<*>, identity: String?) -> MiraiLogger) {
-        override = lambda
-    }
-
-    @JvmStatic
-    fun clearOverride() {
-        override = null
-    }
-}
-
-internal class DefaultFactory : MiraiLogger.Factory {
-    override fun create(requester: Class<*>, identity: String?): MiraiLogger {
-        val override = DefaultFactoryOverrides.override
-        return if (override != null) override(requester, identity) else PlatformLogger(
-            identity ?: requester.kotlin.simpleName ?: requester.simpleName
-        )
-    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -7,11 +7,8 @@
  * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:JvmBlockingBridge
-
 package net.mamoe.mirai.internal.notice.processors
 
-import net.mamoe.kjbb.JvmBlockingBridge
 import net.mamoe.mirai.contact.MemberPermission
 import net.mamoe.mirai.event.events.BotMuteEvent
 import net.mamoe.mirai.event.events.BotUnmuteEvent
@@ -20,15 +17,16 @@ import net.mamoe.mirai.event.events.MemberUnmuteEvent
 import net.mamoe.mirai.internal.network.protocol.data.jce.MsgInfo
 import net.mamoe.mirai.internal.network.protocol.data.jce.OnlinePushPack
 import net.mamoe.mirai.internal.network.protocol.data.jce.ShareData
+import net.mamoe.mirai.internal.test.runBlockingUnit
 import net.mamoe.mirai.utils.currentTimeSeconds
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 
 internal class MuteTest : AbstractNoticeProcessorTest() {
     @Test
-    suspend fun `bot mute`() {
+    fun `bot mute`() = runBlockingUnit {
         suspend fun MuteTest.runTest() = use {
             OnlinePushPack.SvcReqPushMsg(
                 uin = 1230001,
@@ -79,7 +77,7 @@ internal class MuteTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `bot unmute`() {
+    fun `bot unmute`() = runBlockingUnit {
         suspend fun MuteTest.runTest() = use {
             OnlinePushPack.SvcReqPushMsg(
                 uin = 1230001,
@@ -146,7 +144,7 @@ internal class MuteTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `member mute`() {
+    fun `member mute`() = runBlockingUnit {
         suspend fun MuteTest.runTest() = use {
             OnlinePushPack.SvcReqPushMsg(
                 uin = 1230001,
@@ -198,7 +196,7 @@ internal class MuteTest : AbstractNoticeProcessorTest() {
 
 
     @Test
-    suspend fun `member unmute`() {
+    fun `member unmute`() = runBlockingUnit {
         suspend fun MuteTest.runTest() = use {
             OnlinePushPack.SvcReqPushMsg(
                 uin = 1230001,

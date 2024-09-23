@@ -20,7 +20,11 @@ import net.mamoe.mirai.internal.event.VerboseEvent
 import net.mamoe.mirai.message.MessageReceipt
 import net.mamoe.mirai.message.data.MessageChain
 import net.mamoe.mirai.message.data.MessageSource
+import net.mamoe.mirai.utils.DeprecatedSinceMirai
 import net.mamoe.mirai.utils.MiraiInternalApi
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
+import kotlin.jvm.JvmSynthetic
 
 
 /**
@@ -33,6 +37,7 @@ import net.mamoe.mirai.utils.MiraiInternalApi
  * @see Contact.sendMessage 发送消息. 为广播这个事件的唯一途径
  * @see MessagePreSendEvent
  */
+@OptIn(MiraiInternalApi::class)
 public sealed class MessagePostSendEvent<C : Contact> : BotEvent, BotActiveEvent, AbstractEvent(), VerboseEvent {
     /** 发信目标. */
     public abstract val target: C
@@ -156,6 +161,7 @@ public data class FriendMessagePostSendEvent @MiraiInternalApi constructor(
     ),
     DeprecationLevel.HIDDEN
 )
+@DeprecatedSinceMirai(hiddenSince = "2.0") // maybe 2.0
 public sealed class TempMessagePostSendEvent @MiraiInternalApi constructor(
     /** 发信目标. */
     public override val target: Member,
@@ -179,6 +185,7 @@ public sealed class TempMessagePostSendEvent @MiraiInternalApi constructor(
  * 在群临时会话消息发送后广播的事件.
  * @see MessagePostSendEvent
  */
+@OptIn(MiraiInternalApi::class)
 public data class GroupTempMessagePostSendEvent @MiraiInternalApi constructor(
     /** 发信目标. */
     public override val target: NormalMember,

@@ -1,14 +1,15 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.components
 
+import kotlinx.serialization.json.Json
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.network.FriendListCache
 import net.mamoe.mirai.internal.network.GroupMemberListCaches
@@ -43,7 +44,18 @@ internal class ContactCacheServiceImpl(
     // contact cache
     ///////////////////////////////////////////////////////////////////////////
 
-    inline val json get() = configuration.json
+    companion object {
+        internal val json: Json = kotlin.runCatching {
+            Json {
+                isLenient = true
+                ignoreUnknownKeys = true
+                prettyPrint = true
+            }
+        }.getOrElse {
+            @Suppress("JSON_FORMAT_REDUNDANT_DEFAULT") // compatibility for older versions
+            (Json {})
+        }
+    }
 
     override val friendListCache: FriendListCache? by lazy {
         if (!configuration.contactListCache.friendListCacheEnabled) return@lazy null

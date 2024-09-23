@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,7 +9,9 @@
 
 package net.mamoe.mirai.message.data
 
+import net.mamoe.mirai.message.data.visitor.MessageVisitor
 import net.mamoe.mirai.utils.MiraiExperimentalApi
+import net.mamoe.mirai.utils.MiraiInternalApi
 import net.mamoe.mirai.utils.NotStableForInheritance
 import net.mamoe.mirai.utils.safeCast
 
@@ -20,6 +22,7 @@ import net.mamoe.mirai.utils.safeCast
  *
  * @see Dice
  */
+@OptIn(MiraiExperimentalApi::class)
 @NotStableForInheritance
 public interface MarketFace : HummerMessage {
     /**
@@ -35,10 +38,18 @@ public interface MarketFace : HummerMessage {
 
     override val key: MessageKey<MarketFace> get() = Key
 
-    override fun contentToString(): String = name
+    override fun contentToString(): String = name.ifEmpty { "[商城表情]" }
 
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitMarketFace(this, data)
+    }
+
+    @OptIn(MiraiExperimentalApi::class)
     public companion object Key :
         AbstractPolymorphicMessageKey<HummerMessage, MarketFace>(HummerMessage, { it.safeCast() }) {
+        // Notice that for MarketFaceImpl, its serial name is 'MarketFace';
+        // while for Dice, that is 'Dice' instead of 'MarketFace' again. (Dice extends MarketFace)
         public const val SERIAL_NAME: String = "MarketFace"
     }
 }

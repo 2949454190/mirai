@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,17 +9,16 @@
 
 package net.mamoe.mirai.internal.utils.io.serialization.tars.internal
 
-import kotlinx.io.charsets.Charset
-import kotlinx.io.core.*
+import io.ktor.utils.io.charsets.*
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.internal.utils.io.serialization.tars.Tars
-import net.mamoe.mirai.internal.utils.io.serialization.tars.internal.TarsDecoder.Companion.println
 
 
 /**
  * Tars Input. 需要手动管理 head.
  */
 internal class TarsInput(
-    val input: Input, private val charset: Charset,
+    val input: Input, private val charset: Charset, private val debugLogger: DebugLogger,
 ) {
     private var _head: TarsHead? = null
     private var _nextHead: TarsHead? = null
@@ -40,7 +39,7 @@ internal class TarsInput(
     fun peekNextHead(): TarsHead? {
         _nextHead?.let { return it }
         return readNextHeadButDoNotAssignTo_Head(true).also { _nextHead = it; }.also {
-            println("Peek next head: $it")
+            debugLogger.println("Peek next head: $it")
         }
     }
 
@@ -79,11 +78,16 @@ internal class TarsInput(
         if (input.endOfInput) {
             return null
         }
-        val var2 = input.readUByte()
+        val var2 = try {
+            input.readByte().toUByte()
+        } catch (e: EOFException) {
+            // somehow `endOfInput` still returns false
+            return null
+        }
         val type = var2 and 15u
         var tag = var2.toUInt() shr 4
         if (tag == 15u) {
-            tag = input.readUByte().toUInt()
+            tag = input.readByte().toUByte().toUInt()
         }
         return TarsHead(
             tag = tag.toInt(),
@@ -114,7 +118,7 @@ internal class TarsInput(
         crossinline message: () -> String = { "tag not found: $tag" },
         crossinline block: (TarsHead) -> R,
     ): R {
-        return checkNotNull<R>(skipToHeadAndUseIfPossibleOrNull(tag, block), message)
+        return checkNotNull(skipToHeadAndUseIfPossibleOrNull(tag, block), message)
     }
 
     @Suppress("MemberVisibilityCanBePrivate")
@@ -124,7 +128,7 @@ internal class TarsInput(
             if (tag <= hd.tag || hd.type == 11.toByte()) {
                 return tag == hd.tag
             }
-            println("Discard $tag, $hd, ${hd.size}")
+            debugLogger.println("Discard $tag, $hd, ${hd.size}")
             input.discardExact(hd.size)
             skipField(hd.type)
         }
@@ -153,7 +157,7 @@ internal class TarsInput(
     @OptIn(ExperimentalUnsignedTypes::class)
     @PublishedApi
     internal fun skipField(type: Byte) {
-        println {
+        debugLogger.println {
             "skipping ${
                 TarsHead.findTarsTypeName(
                     type
@@ -167,33 +171,33 @@ internal class TarsInput(
             Tars.LONG -> this.input.discardExact(8)
             Tars.FLOAT -> this.input.discardExact(4)
             Tars.DOUBLE -> this.input.discardExact(8)
-            Tars.STRING1 -> this.input.discardExact(this.input.readUByte().toInt())
+            Tars.STRING1 -> this.input.discardExact(this.input.readByte().toUByte().toInt())
             Tars.STRING4 -> this.input.discardExact(this.input.readInt())
             Tars.MAP -> { // map
-                TarsDecoder.structureHierarchy++
+                debugLogger.structureHierarchy++
                 repeat(readInt32(0).also {
-                    println("SIZE = $it")
+                    debugLogger.println("SIZE = $it")
                 } * 2) {
                     skipField(nextHead().type)
                 }
-                TarsDecoder.structureHierarchy--
+                debugLogger.structureHierarchy--
             }
             Tars.LIST -> { // list
-                TarsDecoder.structureHierarchy++
+                debugLogger.structureHierarchy++
                 repeat(readInt32(0).also {
-                    println("SIZE = $it")
+                    debugLogger.println("SIZE = $it")
                 }) {
                     skipField(nextHead().type)
                 }
-                TarsDecoder.structureHierarchy--
+                debugLogger.structureHierarchy--
             }
             Tars.STRUCT_BEGIN -> {
-                TarsDecoder.structureHierarchy++
+                debugLogger.structureHierarchy++
                 var head: TarsHead
                 do {
                     head = nextHead()
                     if (head.type == Tars.STRUCT_END) {
-                        TarsDecoder.structureHierarchy--
+                        debugLogger.structureHierarchy--
                         skipField(head.type)
                         break
                     }
@@ -203,7 +207,7 @@ internal class TarsInput(
             Tars.STRUCT_END, Tars.ZERO_TYPE -> {
             }
             Tars.SIMPLE_LIST -> {
-                TarsDecoder.structureHierarchy++
+                debugLogger.structureHierarchy++
                 var head = nextHead()
                 check(head.type == Tars.BYTE) { "bad simple list element type: " + head.type + ", $head" }
                 check(head.tag == 0) { "simple list element tag must be 0, but was ${head.tag}" }
@@ -211,7 +215,7 @@ internal class TarsInput(
                 head = nextHead()
                 check(head.tag == 0) { "tag for size for simple list must be 0, but was ${head.tag}" }
                 this.input.discardExact(readTarsIntValue(head))
-                TarsDecoder.structureHierarchy--
+                debugLogger.structureHierarchy--
             }
             else -> error("invalid type: $type")
         }
@@ -219,7 +223,7 @@ internal class TarsInput(
 
     // region readers
     fun readTarsIntValue(head: TarsHead): Int {
-        //println("readTarsIntValue: $head")
+        //debugLogger.println("readTarsIntValue: $head")
         return readTarsIntValue(head.type, head)
     }
 
@@ -255,7 +259,7 @@ internal class TarsInput(
     }
 
     fun readTarsByteValue(head: TarsHead): Byte {
-        //println("readTarsByteValue: $head")
+        //debugLogger.println("readTarsByteValue: $head")
         return when (head.type) {
             Tars.ZERO_TYPE -> 0
             Tars.BYTE -> input.readByte()
@@ -273,11 +277,11 @@ internal class TarsInput(
 
     @OptIn(ExperimentalUnsignedTypes::class)
     fun readTarsStringValue(head: TarsHead): String {
-        //println("readTarsStringValue: $head")
+        //debugLogger.println("readTarsStringValue: $head")
         return when (head.type) {
-            Tars.STRING1 -> input.readString(input.readUByte().toInt(), charset = charset)
+            Tars.STRING1 -> input.readString(input.readByte().toUByte().toInt(), charset = charset)
             Tars.STRING4 -> input.readString(
-                input.readUInt().toInt().also { require(it in 1 until 104857600) { "bad string length: $it" } },
+                input.readInt().toUInt().toInt().also { require(it in 1 until 104857600) { "bad string length: $it" } },
                 charset = charset
             )
             else -> error("type mismatch: $head, expecting 6 or 7 (for string)")

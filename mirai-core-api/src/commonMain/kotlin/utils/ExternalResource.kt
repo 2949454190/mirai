@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -11,25 +11,29 @@
 
 package net.mamoe.mirai.utils
 
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.Contact
 import net.mamoe.mirai.contact.Contact.Companion.sendImage
 import net.mamoe.mirai.contact.Contact.Companion.uploadImage
 import net.mamoe.mirai.contact.FileSupported
 import net.mamoe.mirai.contact.Group
-import net.mamoe.mirai.internal.utils.ExternalResourceImplByByteArray
-import net.mamoe.mirai.internal.utils.ExternalResourceImplByFile
+import net.mamoe.mirai.internal.utils.*
 import net.mamoe.mirai.message.MessageReceipt
 import net.mamoe.mirai.message.data.FileMessage
 import net.mamoe.mirai.message.data.Image
 import net.mamoe.mirai.message.data.sendTo
+import net.mamoe.mirai.message.data.toVoice
 import net.mamoe.mirai.utils.ExternalResource.Companion.sendAsImageTo
 import net.mamoe.mirai.utils.ExternalResource.Companion.toExternalResource
 import net.mamoe.mirai.utils.ExternalResource.Companion.uploadAsImage
-import java.io.*
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.RandomAccessFile
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
 
@@ -39,22 +43,80 @@ import kotlin.contracts.contract
  *
  * [ExternalResource] 在创建之后就应该保持其属性的不变, 即任何时候获取其属性都应该得到相同结果, 任何时候打开流都得到的一样的数据.
  *
- * ## 创建
+ * # 创建
  * - [File.toExternalResource]
  * - [RandomAccessFile.toExternalResource]
  * - [ByteArray.toExternalResource]
  * - [InputStream.toExternalResource]
  *
- * ## 释放
+ * ## 在 Kotlin 获得和使用 [ExternalResource] 实例
+ *
+ * ```
+ * file.toExternalResource().use { resource -> // 安全地使用资源
+ *     contact.uploadImage(resource) // 用来上传图片
+ *     contact.files.uploadNewFile("/foo/test.txt", resource) // 或者用来上传文件
+ * }
+ * ```
+ *
+ * 注意, 若使用 [InputStream], 必须手动关闭 [InputStream]. 一种使用情况示例:
+ *
+ * ```
+ * inputStream.use { input -> // 安全地使用 InputStream
+ *     input.toExternalResource().use { resource -> // 安全地使用资源
+ *         contact.uploadImage(resource) // 用来上传图片
+ *         contact.files.uploadNewFile("/foo/test.txt", resource) // 或者用来上传文件
+ *     }
+ * }
+ * ```
+ *
+ * ## 在 Java 获得和使用 [ExternalResource] 实例
+ *
+ * ```
+ * try (ExternalResource resource = ExternalResource.create(file)) { // 使用文件 file
+ *     contact.uploadImage(resource); // 用来上传图片
+ *     contact.files.uploadNewFile("/foo/test.txt", resource); // 或者用来上传文件
+ * }
+ * ```
+ *
+ * 注意, 若使用 [InputStream], 必须手动关闭 [InputStream]. 一种使用情况示例:
+ *
+ * ```java
+ * try (InputStream stream = ...) { // 安全地使用 InputStream
+ *     try (ExternalResource resource = ExternalResource.create(stream)) { // 安全地使用资源
+ *         contact.uploadImage(resource); // 用来上传图片
+ *         contact.files.uploadNewFile("/foo/test.txt", resource); // 或者用来上传文件
+ *     }
+ * }
+ * ```
+ *
+ * # 释放
  *
  * 当 [ExternalResource] 创建时就可能会打开一个文件 (如使用 [File.toExternalResource]).
  * 类似于 [InputStream], [ExternalResource] 需要被 [关闭][close].
  *
- * 自 2.7 起, 每个 mirai 内置的 [ExternalResource] 实现都有引用跟踪, 当 [ExternalResource] 被 GC 后会执行被动释放, 但是该策略并不代表不需要手动 close.
+ * ## 未释放资源的补救策略
  *
- * ## 实现 [ExternalResource]
+ * 自 2.7 起, 每个 mirai 内置的 [ExternalResource] 实现都有引用跟踪, 当 [ExternalResource] 被 GC 后会执行被动释放.
+ * 这依赖于 JVM 垃圾收集策略, 因此不可靠, 资源仍然需要手动 close.
+ *
+ * ## 使用单次自动释放
+ *
+ * 若创建的资源仅需要*很快地*使用一次, 可使用 [toAutoCloseable] 获得在使用一次后就会自动关闭的资源.
+ *
+ * 示例:
+ * ```java
+ * contact.uploadImage(ExternalResource.create(file).toAutoCloseable()); // 创建并立即使用单次自动释放的资源
+ * ```
+ *
+ * **注意**: 如果仅使用 [toAutoCloseable] 而不通过 [Contact.uploadImage] 等 mirai 内置方法使用资源, 资源仍然会处于打开状态且不会被自动关闭.
+ * 最终资源会由上述*未释放资源的补救策略*关闭, 但这依赖于 JVM 垃圾收集策略而不可靠.
+ * 因此建议在创建单次自动释放的资源后就尽快使用它, 否则仍然需要考虑在正确的时间及时关闭资源.
+ *
+ * # 实现 [ExternalResource]
  *
  * 可以自行实现 [ExternalResource]. 但通常上述创建方法已足够使用.
+ *
+ * 建议继承 [AbstractExternalResource], 这将支持上文提到的资源自动释放功能.
  *
  * 实现时需保持 [ExternalResource] 在构造后就不可变, 并且所有属性都总是返回一个固定值.
  *
@@ -65,7 +127,7 @@ import kotlin.contracts.contract
  *
  * @see FileCacheStrategy
  */
-public interface ExternalResource : Closeable {
+public interface ExternalResource : java.io.Closeable {
 
     /**
      * 是否在 _使用一次_ 后自动 [close].
@@ -76,7 +138,6 @@ public interface ExternalResource : Closeable {
      *
      * @since 2.8
      */
-    @MiraiExperimentalApi
     public val isAutoClose: Boolean
         get() = false
 
@@ -100,7 +161,9 @@ public interface ExternalResource : Closeable {
      * 文件格式，如 "png", "amr". 当无法自动识别格式时为 [DEFAULT_FORMAT_NAME].
      *
      * 默认会从文件头识别, 支持的文件类型:
-     * png, jpg, gif, tif, bmp, amr, silk
+     * * 图片类型: png, jpg, gif, tif, bmp
+     * * 语音类型: amr, silk
+     * * 视频类类型: mp4, mkv
      *
      * @see net.mamoe.mirai.utils.getFileType
      * @see net.mamoe.mirai.utils.FILE_TYPES
@@ -125,6 +188,18 @@ public interface ExternalResource : Closeable {
      * @throws IllegalStateException 当上一个流未关闭又尝试打开新的流时抛出
      */
     public fun inputStream(): InputStream
+
+    /**
+     * 打开 [Input]. 在返回的 [Input] 被 [关闭][Input.close] 前无法再次打开流.
+     * 注意: 此 API 不稳定, 请使用 [inputStream] 代替.
+     *
+     * 关闭此流不会关闭 [ExternalResource].
+     * @throws IllegalStateException 当上一个流未关闭又尝试打开新的流时抛出
+     *
+     * @since 2.13
+     */
+    @MiraiInternalApi
+    public fun input(): Input
 
     @MiraiInternalApi
     public fun calculateResourceId(): String {
@@ -152,6 +227,25 @@ public interface ExternalResource : Closeable {
      */
     public val origin: Any? get() = null
 
+    /**
+     * 创建一个在 _使用一次_ 后就会自动 [close] 的 [ExternalResource].
+     *
+     * @since 2.8.0
+     */
+    public fun toAutoCloseable(): ExternalResource {
+        return if (isAutoClose) this else {
+            val delegate = this
+            object : ExternalResource by delegate {
+                override val isAutoClose: Boolean get() = true
+                override fun toString(): String = "ExternalResourceWithAutoClose(delegate=$delegate)"
+                override fun toAutoCloseable(): ExternalResource {
+                    return this
+                }
+            }
+        }
+    }
+
+
     public companion object {
         /**
          * 在无法识别文件格式时使用的默认格式名. "mirai".
@@ -166,6 +260,7 @@ public interface ExternalResource : Closeable {
 
         /**
          * **打开文件**并创建 [ExternalResource].
+         * 注意, 返回的 [ExternalResource] 需要在使用完毕后调用 [ExternalResource.close] 关闭.
          *
          * 将以只读模式打开这个文件 (因此文件会处于被占用状态), 直到 [ExternalResource.close].
          *
@@ -175,15 +270,16 @@ public interface ExternalResource : Closeable {
         @JvmOverloads
         @JvmName("create")
         public fun File.toExternalResource(formatName: String? = null): ExternalResource =
-            // although RandomAccessFile constructor throws IOException, actual performance influence is minor so not propagating IOException
+            // although RandomAccessFile constructor throws IOException, performance influence is minor so not propagating IOException
             RandomAccessFile(this, "r").toExternalResource(formatName).also {
                 it.cast<ExternalResourceImplByFile>().origin = this@toExternalResource
             }
 
         /**
          * 创建 [ExternalResource].
+         * 注意, 返回的 [ExternalResource] 需要在使用完毕后调用 [ExternalResource.close] 关闭, 届时将会关闭 [RandomAccessFile].
          *
-         * **注意**：使用此方法时请不要关闭 [RandomAccessFile], 否则会间接关闭 [ExternalResource]
+         * **注意**：若关闭 [RandomAccessFile], 也会间接关闭 [ExternalResource].
          *
          * @see closeOriginalFileOnClose 若为 `true`, 在 [ExternalResource.close] 时将会同步关闭 [RandomAccessFile]. 否则不会.
          *
@@ -199,7 +295,7 @@ public interface ExternalResource : Closeable {
             ExternalResourceImplByFile(this, formatName, closeOriginalFileOnClose)
 
         /**
-         * 创建 [ExternalResource].
+         * 创建 [ExternalResource]. 注意, 返回的 [ExternalResource] 需要在使用完毕后调用 [ExternalResource.close] 关闭.
          *
          * @param formatName 查看 [ExternalResource.formatName]
          */
@@ -212,10 +308,33 @@ public interface ExternalResource : Closeable {
 
         /**
          * 立即使用 [FileCacheStrategy] 缓存 [InputStream] 并创建 [ExternalResource].
+         * 返回的 [ExternalResource] 需要在使用完毕后调用 [ExternalResource.close] 关闭.
          *
          * **注意**：本函数不会关闭流.
          *
+         * ### 在 Java 获得和使用 [ExternalResource] 实例
+         *
+         * ```
+         * try(ExternalResource resource = ExternalResource.create(file)) { // 使用文件 file
+         *     contact.uploadImage(resource); // 用来上传图片
+         *     contact.files.uploadNewFile("/foo/test.txt", file); // 或者用来上传文件
+         * }
+         * ```
+         *
+         * 注意, 若使用 [InputStream], 必须手动关闭 [InputStream]. 一种使用情况示例:
+         *
+         * ```
+         * try(InputStream stream = ...) {
+         *     try(ExternalResource resource = ExternalResource.create(stream)) {
+         *         contact.uploadImage(resource); // 用来上传图片
+         *         contact.files.uploadNewFile("/foo/test.txt", file); // 或者用来上传文件
+         *     }
+         * }
+         * ```
+         *
+         *
          * @param formatName 查看 [ExternalResource.formatName]
+         * @see ExternalResource
          */
         @JvmStatic
         @JvmOverloads
@@ -224,26 +343,25 @@ public interface ExternalResource : Closeable {
         public fun InputStream.toExternalResource(formatName: String? = null): ExternalResource =
             Mirai.FileCacheStrategy.newCache(this, formatName)
 
+        // endregion
+
 
         /* note:
         于 2.8.0-M1 添加 (#1392)
 
         于 2.8.0-RC 移动至 `toExternalResource`(#1588)
-
-        Fixme: 在 2.8.0 标为 HIDDEN
          */
         @JvmName("createAutoCloseable")
         @JvmStatic
         @Deprecated(
-            level = DeprecationLevel.ERROR,
+            level = DeprecationLevel.HIDDEN,
             message = "Moved to `toExternalResource()`",
             replaceWith = ReplaceWith("resource.toAutoCloseable()"),
         )
+        @DeprecatedSinceMirai(errorSince = "2.8", hiddenSince = "2.10")
         public fun createAutoCloseable(resource: ExternalResource): ExternalResource {
             return resource.toAutoCloseable()
         }
-
-        // endregion
 
         ///////////////////////////////////////////////////////////////////////////
         // region sendAsImageTo
@@ -367,7 +485,7 @@ public interface ExternalResource : Closeable {
          * @see RemoteFile.path
          * @see RemoteFile.upload
          */
-        @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION_ERROR")
         @JvmStatic
         @JvmBlockingBridge
         @JvmOverloads
@@ -377,8 +495,9 @@ public interface ExternalResource : Closeable {
                 "this.sendTo(contact, path, callback)",
                 "net.mamoe.mirai.utils.ExternalResource.Companion.sendTo"
             ),
-            level = DeprecationLevel.WARNING
+            level = DeprecationLevel.HIDDEN
         ) // deprecated since 2.7-M1
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
         public suspend fun File.uploadTo(
             contact: FileSupported,
             path: String,
@@ -402,7 +521,7 @@ public interface ExternalResource : Closeable {
          * @see RemoteFile.path
          * @see RemoteFile.upload
          */
-        @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION_ERROR")
         @JvmStatic
         @JvmBlockingBridge
         @JvmName("uploadAsFile")
@@ -413,8 +532,9 @@ public interface ExternalResource : Closeable {
                 "this.sendAsFileTo(contact, path, callback)",
                 "net.mamoe.mirai.utils.ExternalResource.Companion.sendAsFileTo"
             ),
-            level = DeprecationLevel.WARNING
+            level = DeprecationLevel.HIDDEN
         ) // deprecated since 2.7-M1
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
         public suspend fun ExternalResource.uploadAsFile(
             contact: FileSupported,
             path: String,
@@ -439,14 +559,16 @@ public interface ExternalResource : Closeable {
          * @see RemoteFile.path
          * @see RemoteFile.uploadAndSend
          */
-        @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION_ERROR")
         @Deprecated(
             "Deprecated. Please use AbsoluteFolder.uploadNewFile",
-            ReplaceWith("contact.files.uploadNewFile(path, this, callback)")
+            ReplaceWith("contact.files.uploadNewFile(path, this, callback)"),
+            level = DeprecationLevel.ERROR,
         ) // deprecated since 2.8.0-RC
         @JvmStatic
         @JvmBlockingBridge
         @JvmOverloads
+        @DeprecatedSinceMirai(warningSince = "2.8", errorSince = "2.14")
         public suspend fun <C : FileSupported> File.sendTo(
             contact: C,
             path: String,
@@ -465,15 +587,17 @@ public interface ExternalResource : Closeable {
          * @see RemoteFile.path
          * @see RemoteFile.uploadAndSend
          */
-        @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION_ERROR")
         @Deprecated(
             "Deprecated. Please use AbsoluteFolder.uploadNewFile",
-            ReplaceWith("contact.files.uploadNewFile(path, this, callback)")
+            ReplaceWith("contact.files.uploadNewFile(path, this, callback)"),
+            level = DeprecationLevel.ERROR
         ) // deprecated since 2.8.0-RC
         @JvmStatic
         @JvmBlockingBridge
         @JvmName("sendAsFile")
         @JvmOverloads
+        @DeprecatedSinceMirai(warningSince = "2.8", errorSince = "2.14")
         public suspend fun <C : FileSupported> ExternalResource.sendAsFileTo(
             contact: C,
             path: String,
@@ -488,47 +612,21 @@ public interface ExternalResource : Closeable {
         // region uploadAsVoice
         ///////////////////////////////////////////////////////////////////////////
 
-        @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION_ERROR")
         @JvmBlockingBridge
         @JvmStatic
         @Deprecated(
             "Use `contact.uploadAudio(resource)` instead",
-            level = DeprecationLevel.WARNING
+            level = DeprecationLevel.HIDDEN
         ) // deprecated since 2.7
+        @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
         public suspend fun ExternalResource.uploadAsVoice(contact: Contact): net.mamoe.mirai.message.data.Voice {
-            @Suppress("DEPRECATION")
-            if (contact is Group) return contact.uploadVoice(this)
+            @Suppress("DEPRECATION_ERROR")
+            if (contact is Group) return contact.uploadAudio(this).toVoice()
             else throw UnsupportedOperationException("Contact `$contact` is not supported uploading voice")
         }
         // endregion
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // region Java Friendly Functions
-    ///////////////////////////////////////////////////////////////////////////
-
-    /**
-     * 创建一个在 _使用一次_ 后就会自动 [close] 的 [ExternalResource].
-     *
-     * @since 2.8.0
-     */
-    public fun toAutoCloseable(): ExternalResource {
-        return if (isAutoClose) this else {
-            val delegate = this
-            object : ExternalResource by delegate {
-                override val isAutoClose: Boolean get() = true
-                override fun toString(): String = "ExternalResourceWithAutoClose(delegate=$delegate)"
-                override fun toAutoCloseable(): ExternalResource {
-                    return this
-                }
-            }
-        }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // endregion
-    ///////////////////////////////////////////////////////////////////////////
-
 }
 
 /**
@@ -552,9 +650,9 @@ public inline fun <T : ExternalResource, R> T.withAutoClose(action: () -> R): R 
  *
  * @since 2.8
  */
-@MiraiExperimentalApi
 public inline fun <T : ExternalResource, R> T.runAutoClose(action: T.() -> R): R {
     contract { callsInPlace(action, InvocationKind.EXACTLY_ONCE) }
+    @OptIn(MiraiExperimentalApi::class)
     return withAutoClose { action() }
 }
 
@@ -563,7 +661,6 @@ public inline fun <T : ExternalResource, R> T.runAutoClose(action: T.() -> R): R
  *
  * @since 2.8
  */
-@MiraiExperimentalApi
 public inline fun <T : ExternalResource, R> T.useAutoClose(action: (resource: T) -> R): R {
     contract { callsInPlace(action, InvocationKind.EXACTLY_ONCE) }
     return runAutoClose(action)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -14,23 +14,30 @@
 
 package net.mamoe.mirai.internal.contact
 
+import io.ktor.utils.io.core.*
+import kotlinx.coroutines.launch
 import net.mamoe.mirai.LowLevelApi
-import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.Friend
+import net.mamoe.mirai.contact.friendgroup.FriendGroup
 import net.mamoe.mirai.contact.roaming.RoamingMessages
+import net.mamoe.mirai.event.broadcast
 import net.mamoe.mirai.event.events.FriendMessagePostSendEvent
 import net.mamoe.mirai.event.events.FriendMessagePreSendEvent
+import net.mamoe.mirai.event.events.FriendRemarkChangeEvent
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.contact.info.FriendInfoImpl
 import net.mamoe.mirai.internal.contact.roaming.RoamingMessagesImplFriend
-import net.mamoe.mirai.internal.message.OfflineAudioImpl
+import net.mamoe.mirai.internal.message.data.OfflineAudioImpl
+import net.mamoe.mirai.internal.message.protocol.outgoing.FriendMessageProtocolStrategy
+import net.mamoe.mirai.internal.message.protocol.outgoing.MessageProtocolStrategy
+import net.mamoe.mirai.internal.network.components.HttpClientProvider
 import net.mamoe.mirai.internal.network.highway.*
 import net.mamoe.mirai.internal.network.protocol.data.proto.Cmd0x346
 import net.mamoe.mirai.internal.network.protocol.data.proto.ImMsgBody
 import net.mamoe.mirai.internal.network.protocol.packet.chat.voice.PttStore
 import net.mamoe.mirai.internal.network.protocol.packet.chat.voice.audioCodec
 import net.mamoe.mirai.internal.network.protocol.packet.list.FriendList
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
+import net.mamoe.mirai.internal.network.protocol.packet.summarycard.ChangeFriendRemark
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.internal.utils.io.serialization.toByteArray
 import net.mamoe.mirai.message.MessageReceipt
@@ -46,7 +53,8 @@ internal fun net.mamoe.mirai.internal.network.protocol.data.jce.FriendInfo.toMir
     FriendInfoImpl(
         friendUin,
         nick,
-        remark
+        remark,
+        groupId.toInt(),
     )
 
 @OptIn(ExperimentalContracts::class)
@@ -63,30 +71,48 @@ internal class FriendImpl(
     parentCoroutineContext: CoroutineContext,
     override val info: FriendInfoImpl,
 ) : Friend, AbstractUser(bot, parentCoroutineContext, info) {
+    override var nick: String by info::nick
+
+    override var remark: String
+        get() = info.remark
+        set(value) {
+            val old = info.remark
+            info.remark = value
+            launch {
+                bot.network.sendWithoutExpect(ChangeFriendRemark(bot.client, this@FriendImpl.id, value))
+                FriendRemarkChangeEvent(this@FriendImpl, old, value).broadcast()
+            }
+        }
+
+    override val friendGroup: FriendGroup
+        get() = bot.friendGroups[info.friendGroupId] ?: bot.friendGroups[0]!!
+
+    private val messageProtocolStrategy: MessageProtocolStrategy<FriendImpl> = FriendMessageProtocolStrategy(this)
+
     override suspend fun delete() {
         check(bot.friends[id] != null) {
             "Friend $id had already been deleted"
         }
-        bot.network.run {
-            FriendList.DelFriend.invoke(bot.client, this@FriendImpl).sendAndExpect().also {
-                check(it.isSuccess) { "delete friend failed: ${it.resultCode}" }
-            }
+        bot.network.sendAndExpect(FriendList.DelFriend.invoke(bot.client, this@FriendImpl), 5000, 2).let {
+            check(it.isSuccess) { "delete friend failed: ${it.resultCode}" }
         }
     }
 
-
-    private val handler: FriendSendMessageHandler by lazy { FriendSendMessageHandler(this) }
-
-    @Suppress("DuplicatedCode")
     override suspend fun sendMessage(message: Message): MessageReceipt<Friend> {
-        return handler.sendMessageImpl(message, ::FriendMessagePreSendEvent, ::FriendMessagePostSendEvent)
+        return sendMessageImpl(
+            message,
+            messageProtocolStrategy,
+            ::FriendMessagePreSendEvent,
+            ::FriendMessagePostSendEvent.cast()
+        )
     }
 
     override fun toString(): String = "Friend($id)"
 
-    override suspend fun uploadAudio(resource: ExternalResource): OfflineAudio = AudioToSilkService.convert(
+    override suspend fun uploadAudio(resource: ExternalResource): OfflineAudio = AudioToSilkService.instance.convert(
         resource
     ).useAutoClose { res ->
+
         var audio: OfflineAudioImpl? = null
         kotlin.runCatching {
             val resp = Highway.uploadResourceBdh(
@@ -118,7 +144,7 @@ internal class FriendImpl(
                 )
             )
         }.recoverCatchingSuppressed {
-            when (val resp = PttStore.GroupPttUp(bot.client, bot.id, id, res).sendAndExpect(bot)) {
+            when (val resp = bot.network.sendAndExpect(PttStore.GroupPttUp(bot.client, bot.id, id, res))) {
                 is PttStore.GroupPttUp.Response.RequireUpload -> {
                     tryServersUpload(
                         bot,
@@ -127,7 +153,8 @@ internal class FriendImpl(
                         ResourceKind.GROUP_AUDIO,
                         ChannelKind.HTTP
                     ) { ip, port ->
-                        Mirai.Http.postPtt(ip, port, res, resp.uKey, resp.fileKey)
+                        bot.components[HttpClientProvider].getHttpClient()
+                            .postPtt(ip, port, res, resp.uKey, resp.fileKey)
                     }
                     audio = OfflineAudioImpl(
                         filename = "${res.md5.toUHexString("")}.amr",

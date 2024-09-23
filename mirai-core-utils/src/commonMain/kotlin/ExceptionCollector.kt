@@ -1,16 +1,21 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
+
+@file:JvmName("ExceptionCollectorKt_common")
 
 package net.mamoe.mirai.utils
 
 import kotlin.contracts.InvocationKind
 import kotlin.contracts.contract
+import kotlin.jvm.JvmName
+import kotlin.jvm.Synchronized
+import kotlin.jvm.Volatile
 
 public open class ExceptionCollector {
 
@@ -31,6 +36,7 @@ public open class ExceptionCollector {
     @Volatile
     private var last: Throwable? = null
     private val hashCodes = mutableSetOf<Long>()
+    private val suppressedList = mutableListOf<Throwable>()
 
     /**
      * @return `true` if [e] is new.
@@ -41,19 +47,14 @@ public open class ExceptionCollector {
         if (!hashCodes.add(hash(e))) return false // filter out duplications
         // we can also check suppressed exceptions of [e] but actual influence would be slight.
         beforeCollect(e)
-        this.last?.let { e.addSuppressed(it) }
+        this.last?.let { addSuppressed(e, it) }
         this.last = e
         return true
     }
 
-    private fun hash(e: Throwable): Long {
-        return e.stackTrace.fold(0L) { acc, stackTraceElement ->
-            acc * 31 + hash(stackTraceElement).toLongUnsigned()
-        }
-    }
-
-    private fun hash(element: StackTraceElement): Int {
-        return element.lineNumber.hashCode() xor element.className.hashCode() xor element.methodName.hashCode()
+    protected open fun addSuppressed(receiver: Throwable, e: Throwable) {
+        suppressedList.add(e)
+//        receiver.addSuppressed(e)
     }
 
     public fun collectGet(e: Throwable?): Throwable {
@@ -67,7 +68,23 @@ public open class ExceptionCollector {
      */
     public fun collectException(e: Throwable?): Boolean = collect(e)
 
-    public fun getLast(): Throwable? = last
+    /**
+     * Adds [suppressedList] to suppressed exceptions of [last]
+     */
+    @Synchronized
+    private fun bake() {
+        last?.let { last ->
+            for (suppressed in suppressedList.asReversed()) {
+                last.addSuppressed(suppressed)
+            }
+        }
+        suppressedList.clear()
+    }
+
+    public fun getLast(): Throwable? {
+        bake()
+        return last
+    }
 
     @TerminalOperation // to give it a color for a clearer control flow
     public fun collectThrow(exception: Throwable): Nothing {
@@ -86,7 +103,8 @@ public open class ExceptionCollector {
     @TestOnly // very slow
     public fun asSequence(): Sequence<Throwable> {
         fun Throwable.itr(): Iterator<Throwable> {
-            return (sequenceOf(this) + this.suppressed.asSequence().flatMap { it.itr().asSequence() }).iterator()
+            return (sequenceOf(this) + this.suppressedExceptions.asSequence()
+                .flatMap { it.itr().asSequence() }).iterator()
         }
 
         val last = getLast() ?: return emptySequence()
@@ -97,6 +115,17 @@ public open class ExceptionCollector {
     public fun dispose() { // help gc
         this.last = null
         this.hashCodes.clear()
+        this.suppressedList.clear()
+    }
+
+    public companion object {
+        public fun compressExceptions(exceptions: Array<Throwable>): Throwable? {
+            return ExceptionCollector(*exceptions).getLast()
+        }
+
+        public fun compressExceptions(exception: Throwable, vararg exceptions: Throwable): Throwable {
+            return ExceptionCollector(exception, *exceptions).getLast()!!
+        }
     }
 }
 
@@ -120,6 +149,10 @@ public inline fun <R> ExceptionCollector.withExceptionCollector(action: Exceptio
             return action()
         } catch (e: Throwable) {
             collectThrow(e)
+        } finally {
+            dispose()
         }
     }
 }
+
+internal expect fun hash(e: Throwable): Long

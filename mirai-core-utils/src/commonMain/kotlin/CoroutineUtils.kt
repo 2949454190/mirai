@@ -1,14 +1,14 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:JvmMultifileClass
-@file:JvmName("MiraiUtils")
+
+@file:JvmName("CoroutineUtilsKt_common")
 
 package net.mamoe.mirai.utils
 
@@ -17,25 +17,15 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.jvm.JvmName
 
-@Suppress("unused", "INVISIBLE_MEMBER", "INVISIBLE_REFERENCE", "DeprecatedCallableAddReplaceWith")
-@Deprecated(
-    message = "Use runBIO which delegates to `runInterruptible`. " +
-            "Technically remove suspend call in `block` and remove CoroutineScope parameter usages.",
-    level = DeprecationLevel.HIDDEN
-)
-@kotlin.internal.LowPriorityInOverloadResolution
-public suspend inline fun <R> runBIO(
-    noinline block: suspend CoroutineScope.() -> R,
-): R = withContext(Dispatchers.IO, block)
-
-public suspend inline fun <R> runBIO(
+public expect suspend inline fun <R> runBIO(
     noinline block: () -> R,
-): R = runInterruptible(context = Dispatchers.IO, block = block)
+): R
 
-public suspend inline fun <T, R> T.runBIO(
+public expect suspend inline fun <T, R> T.runBIO(
     crossinline block: T.() -> R,
-): R = runInterruptible(context = Dispatchers.IO, block = { block() })
+): R
 
 public inline fun CoroutineScope.launchWithPermit(
     semaphore: Semaphore,
@@ -98,20 +88,38 @@ public fun CoroutineScope.hierarchicalName(
     name: String,
 ): CoroutineName = this.coroutineContext.hierarchicalName(name)
 
-public inline fun <R> runUnwrapCancellationException(block: () -> R): R {
-    try {
-        return block()
-    } catch (e: CancellationException) {
-        // e is like `Exception in thread "main" kotlinx.coroutines.JobCancellationException: Parent job is Cancelling; job=JobImpl{Cancelled}@f252f300`
-        // and this is useless.
-        throw e.unwrapCancellationException()
+public fun CoroutineContext.newCoroutineContextWithSupervisorJob(name: String? = null): CoroutineContext =
+    this + CoroutineName(name ?: "<unnamed>") + SupervisorJob(this[Job])
 
-        // if (e.suppressed.isNotEmpty()) throw e // preserve details.
-        // throw e.findCause { it !is CancellationException } ?: e
+public fun CoroutineScope.childScope(
+    name: String? = null,
+    context: CoroutineContext = EmptyCoroutineContext
+): CoroutineScope =
+    CoroutineScope(this.childScopeContext(name, context))
+
+public fun CoroutineContext.childScope(
+    name: String? = null,
+    context: CoroutineContext = EmptyCoroutineContext
+): CoroutineScope =
+    CoroutineScope(this.childScopeContext(name, context))
+
+public fun CoroutineScope.childScopeContext(
+    name: String? = null,
+    context: CoroutineContext = EmptyCoroutineContext
+): CoroutineContext =
+    this.coroutineContext.childScopeContext(name, context)
+
+public fun CoroutineContext.childScopeContext(
+    name: String? = null,
+    context: CoroutineContext = EmptyCoroutineContext
+): CoroutineContext =
+    this.newCoroutineContextWithSupervisorJob(name) + context.let {
+        if (name != null) it + CoroutineName(name)
+        else it
     }
-}
 
-public fun Throwable.unwrapCancellationException(): Throwable = unwrap<CancellationException>()
+public fun Throwable.unwrapCancellationException(addSuppressed: Boolean = true): Throwable =
+    unwrap<CancellationException>(addSuppressed)
 
 /**
  * For code
@@ -158,6 +166,6 @@ public fun Throwable.unwrapCancellationException(): Throwable = unwrap<Cancellat
  * ```
  */
 @Suppress("unused")
-public expect inline fun <reified E> Throwable.unwrap(): Throwable
+public expect inline fun <reified E> Throwable.unwrap(addSuppressed: Boolean = true): Throwable
 
 public val CoroutineContext.coroutineName: String get() = this[CoroutineName]?.name ?: "unnamed"

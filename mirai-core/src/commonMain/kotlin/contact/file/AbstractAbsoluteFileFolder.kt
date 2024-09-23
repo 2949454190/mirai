@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -19,9 +19,9 @@ import net.mamoe.mirai.contact.file.AbsoluteFolder
 import net.mamoe.mirai.internal.asQQAndroidBot
 import net.mamoe.mirai.internal.network.protocol.packet.chat.FileManagement
 import net.mamoe.mirai.internal.network.protocol.packet.chat.toResult
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
 import net.mamoe.mirai.internal.utils.FileSystem
 import net.mamoe.mirai.utils.cast
+import net.mamoe.mirai.utils.isSameType
 
 internal fun AbstractAbsoluteFileFolder.api(): AbsoluteFileFolder = this.cast()
 internal fun AbsoluteFileFolder.impl(): AbstractAbsoluteFileFolder = this.cast()
@@ -31,6 +31,7 @@ internal fun AbsoluteFolder.impl(): AbsoluteFolderImpl = this.cast()
 internal val AbsoluteFolder?.idOrRoot get() = this?.id ?: AbsoluteFolder.ROOT_FOLDER_ID
 
 internal val AbstractAbsoluteFileFolder.parentOrRoot get() = parent ?: contact.files.root
+internal val AbstractAbsoluteFileFolder.root get() = contact.files.root
 
 /**
  * @see AbsoluteFileFolder
@@ -71,11 +72,13 @@ internal abstract class AbstractAbsoluteFileFolder(
         parentOrFail()
         checkPermission("renameTo")
 
-        val result = if (isFile) {
-            FileManagement.RenameFile(client, contact.id, busId, id, parent.idOrRoot, newName)
-        } else {
-            FileManagement.RenameFolder(client, contact.id, id, newName)
-        }.sendAndExpect(bot)
+        val result = bot.network.sendAndExpect(
+            if (isFile) {
+                FileManagement.RenameFile(client, contact.id, busId, id, parent.idOrRoot, newName)
+            } else {
+                FileManagement.RenameFolder(client, contact.id, id, newName)
+            }
+        )
 
         result.toResult("AbstractAbsoluteFileFolder.renameTo") {
             when (it) {
@@ -94,10 +97,10 @@ internal abstract class AbstractAbsoluteFileFolder(
     suspend fun delete(): Boolean {
         checkPermission("delete")
         val result = if (isFile) {
-            FileManagement.DeleteFile(client, contact.id, busId, id, parent.idOrRoot).sendAndExpect(bot)
+            bot.network.sendAndExpect(FileManagement.DeleteFile(client, contact.id, busId, id, parent.idOrRoot))
         } else {
             // natively 'recursive'
-            FileManagement.DeleteFolder(client, contact.id, id).sendAndExpect(bot)
+            bot.network.sendAndExpect(FileManagement.DeleteFolder(client, contact.id, id))
         }.toResult("AbstractAbsoluteFileFolder.delete", checkResp = false).getOrThrow()
 
         return when (result.int32RetCode) {
@@ -113,9 +116,7 @@ internal abstract class AbstractAbsoluteFileFolder(
     @Suppress("DuplicatedCode")
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as AbstractAbsoluteFileFolder
+        if (!isSameType(this, other)) return false
 
         if (contact != other.contact) return false
         if (parent != other.parent) return false

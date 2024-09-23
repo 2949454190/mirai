@@ -1,17 +1,15 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.notice.priv
 
-import kotlinx.io.core.discardExact
-import kotlinx.io.core.readUByte
-import kotlinx.io.core.readUShort
+import io.ktor.utils.io.core.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 import net.mamoe.mirai.contact.User
@@ -35,8 +33,6 @@ import net.mamoe.mirai.internal.network.protocol.data.proto.Submsgtype0x44.Subms
 import net.mamoe.mirai.internal.network.protocol.data.proto.Submsgtype0xb3.SubMsgType0xb3
 import net.mamoe.mirai.internal.network.protocol.packet.chat.NewContact
 import net.mamoe.mirai.internal.network.protocol.packet.list.FriendList.GetFriendGroupList
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
-import net.mamoe.mirai.internal.utils._miraiContentToString
 import net.mamoe.mirai.internal.utils.io.ProtoBuf
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.utils.*
@@ -57,23 +53,24 @@ internal class FriendNoticeProcessor(
         var fromGroup = 0L
         var pbNick = ""
         msgBody.msgContent.read {
-            readUByte() // version
-            discardExact(readUByte().toInt()) //skip
-            readUShort() //source id
-            readUShort() //SourceSubID
-            discardExact(readUShort().toLong()) //skip size
-            if (readUShort().toInt() != 0) { //hasExtraInfo
-                discardExact(readUShort().toInt()) //mail address info, skip
+            readByte().toUByte() // version
+            discardExact(readByte().toUByte().toInt()) //skip
+            readShort().toUShort() //source id
+            readShort().toUShort() //SourceSubID
+            discardExact(readShort().toUShort().toLong()) //skip size
+            if (readShort().toUShort().toInt() != 0) { //hasExtraInfo
+                discardExact(readShort().toUShort().toInt()) //mail address info, skip
             }
-            discardExact(4 + readUShort().toInt()) //skip
-            for (i in 1..readUByte().toInt()) { //pb size
-                val type = readUShort().toInt()
-                val pbArray = ByteArray(readUShort().toInt() and 0xFF)
+            discardExact(4 + readShort().toUShort().toInt()) //skip
+            for (i in 1..readByte().toUByte().toInt()) { //pb size
+                val type = readShort().toUShort().toInt()
+                val pbArray = ByteArray(readShort().toUShort().toInt() and 0xFF)
                 readAvailable(pbArray)
                 when (type) {
                     1000 -> pbArray.loadAs(FrdSysMsg.GroupInfo.serializer()).let { fromGroup = it.groupUin }
                     1002 -> pbArray.loadAs(FrdSysMsg.FriendMiscInfo.serializer())
                         .let { pbNick = it.fromuinNick }
+
                     else -> {
                     } //ignore
                 }
@@ -92,9 +89,7 @@ internal class FriendNoticeProcessor(
             val nick = fromNick.ifEmpty { authNick }.ifEmpty { pbNick }
             collect(StrangerAddEvent(bot.addNewStranger(StrangerInfoImpl(id, nick, fromGroup)) ?: return))
             //同时需要请求好友验证消息（有新请求需要同意）
-            bot.network.run {
-                NewContact.SystemMsgNewFriend(bot.client).sendWithoutExpect()
-            }
+            bot.network.sendWithoutExpect(NewContact.SystemMsgNewFriend(bot.client))
         }
 
     }
@@ -107,10 +102,12 @@ internal class FriendNoticeProcessor(
                 val body: SubMsgType0xb3.MsgBody = vProtobuf.loadAs(SubMsgType0xb3.MsgBody.serializer())
                 handleFriendAddedB(data, body)
             }
+
             0x44L -> {
                 val body = vProtobuf.loadAs(Submsgtype0x44.MsgBody.serializer())
                 handleFriendAddedA(body)
             }
+
             0x27L -> {
                 val body = vProtobuf.loadAs(SubMsgType0x27MsgBody.serializer())
                 for (msgModInfo in body.msgModInfos) {
@@ -122,10 +119,12 @@ internal class FriendNoticeProcessor(
                     }
                 }
             }
+
             0x115L -> {
                 val body = vProtobuf.loadAs(SubMsgType0x115.MsgBody.serializer())
                 handleInputStatusChanged(body)
             }
+
             0x122L -> {
                 val body = vProtobuf.loadAs(Submsgtype0x122.Submsgtype0x122.MsgBody.serializer())
                 when (body.templId) {
@@ -133,10 +132,12 @@ internal class FriendNoticeProcessor(
                     1132L, 1133L, 1134L, 1135L, 1136L, 10043L -> handlePrivateNudge(body)
                 }
             }
+
             0x8AL -> {
                 val body = vProtobuf.loadAs(Sub8A.serializer())
                 processFriendRecall(body)
             }
+
             else -> markNotConsumed()
         }
     }
@@ -155,12 +156,13 @@ internal class FriendNoticeProcessor(
         @ProtoNumber(3) val srcId: Int,
         @ProtoNumber(4) val srcInternalId: Long,
         @ProtoNumber(5) val time: Long,
-        @ProtoNumber(6) val random: Int,
-        @ProtoNumber(7) val pkgNum: Int, // 1
-        @ProtoNumber(8) val pkgIndex: Int, // 0
-        @ProtoNumber(9) val devSeq: Int, // 0
-        @ProtoNumber(12) val flag: Int, // 1
-        @ProtoNumber(13) val wording: Wording,
+        // see #2784
+//        @ProtoNumber(6) val random: Int,
+//        @ProtoNumber(7) val pkgNum: Int, // 1
+//        @ProtoNumber(8) val pkgIndex: Int, // 0
+//        @ProtoNumber(9) val devSeq: Int, // 0
+//        @ProtoNumber(12) val flag: Int, // 1
+//        @ProtoNumber(13) val wording: Wording,
     ) : ProtoBuf
 
     @Serializable
@@ -212,11 +214,12 @@ internal class FriendNoticeProcessor(
                         friend.info.nick = to
                     }
                 }
+
                 else -> containsUnknown = true
             }
         }
         if (body.msgProfileInfos.isEmpty() || containsUnknown) {
-            logger.debug { "Transformers528 0x27L: ProfileChanged new data: ${body._miraiContentToString()}" }
+            logger.debug { "Transformers528 0x27L: ProfileChanged new data: ${body.structureToString()}" }
         }
     }
 
@@ -252,7 +255,8 @@ internal class FriendNoticeProcessor(
             3, 9, 10 -> {
                 if (bot.getFriend(fuin) != null) return
 
-                val response = GetFriendGroupList.forSingleFriend(bot.client, fuin).sendAndExpect(bot)
+
+                val response = bot.network.sendAndExpect(GetFriendGroupList.forSingleFriend(bot.client, fuin))
                 val info = response.friendList.firstOrNull() ?: return
                 collect(
                     FriendAddEvent(bot.addNewFriendAndRemoveStranger(info.toMiraiFriendInfo()) ?: return),
@@ -268,13 +272,14 @@ internal class FriendNoticeProcessor(
                 uin = body.msgAddFrdNotify.fuin,
                 nick = body.msgAddFrdNotify.fuinNick,
                 remark = "",
+                friendGroupId = 0,
             )
 
             val removed = bot.removeStranger(info.uin)
             val added = bot.addNewFriendAndRemoveStranger(info) ?: return
             collect(FriendAddEvent(added))
             if (removed != null) collect(StrangerRelationChangeEvent.Friended(removed, added))
-    }
+        }
 
     private fun NoticePipelineContext.handlePrivateNudge(body: Submsgtype0x122.Submsgtype0x122.MsgBody) {
         val action = body.msgTemplParam["action_str"].orEmpty()

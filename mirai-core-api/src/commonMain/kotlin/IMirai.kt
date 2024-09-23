@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,18 +9,14 @@
 
 @file:Suppress("INTERFACE_NOT_SUPPORTED", "PropertyName")
 @file:JvmName("Mirai")
-@file:OptIn(LowLevelApi::class, MiraiExperimentalApi::class, MiraiInternalApi::class)
 @file:JvmBlockingBridge
 
 package net.mamoe.mirai
 
-import io.ktor.client.*
-import io.ktor.client.engine.okhttp.*
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.contact.*
 import net.mamoe.mirai.data.UserProfile
 import net.mamoe.mirai.event.Event
-import net.mamoe.mirai.event._EventBroadcast
 import net.mamoe.mirai.event.broadcast
 import net.mamoe.mirai.event.events.BotInvitedJoinGroupRequestEvent
 import net.mamoe.mirai.event.events.MemberJoinRequestEvent
@@ -30,10 +26,10 @@ import net.mamoe.mirai.message.action.Nudge
 import net.mamoe.mirai.message.data.*
 import net.mamoe.mirai.message.data.Image.Key.queryUrl
 import net.mamoe.mirai.message.data.MessageSource.Key.recall
-import net.mamoe.mirai.utils.FileCacheStrategy
-import net.mamoe.mirai.utils.MiraiExperimentalApi
-import net.mamoe.mirai.utils.MiraiInternalApi
-import net.mamoe.mirai.utils.NotStableForInheritance
+import net.mamoe.mirai.utils.*
+import kotlin.jvm.JvmName
+import kotlin.jvm.JvmStatic
+import kotlin.jvm.JvmSynthetic
 
 /**
  * [IMirai] 实例.
@@ -76,6 +72,7 @@ public val Mirai: IMirai
  *
  * @see Mirai 获取实例
  */
+@OptIn(LowLevelApi::class, MiraiExperimentalApi::class)
 @NotStableForInheritance
 public interface IMirai : LowLevelApiAccessor {
     /**
@@ -93,14 +90,6 @@ public interface IMirai : LowLevelApiAccessor {
      * @see FileCacheStrategy
      */
     public var FileCacheStrategy: FileCacheStrategy
-
-    /**
-     * Mirai 上传好友图片等使用的 Ktor [HttpClient].
-     * 默认使用 [OkHttp] 引擎, 连接超时为 30s.
-     *
-     * 覆盖后将会立即应用到全局.
-     */
-    public var Http: HttpClient
 
     /**
      * 获取 uin.
@@ -180,12 +169,13 @@ public interface IMirai : LowLevelApiAccessor {
     public suspend fun sendNudge(bot: Bot, nudge: Nudge, receiver: Contact): Boolean
 
     /**
-     * 构造 [Image]
+     * 构造 [Image]. 请优先使用 [Image.Factory.create].
      *
      * @see Image
      * @see Image.fromId
+     * @see Image.Factory.create
      */
-    public fun createImage(imageId: String): Image
+    public fun createImage(imageId: String): Image = Image.Builder.newBuilder(imageId).build()
 
     /**
      * 创建一个 [FileMessage]. [name] 与 [size] 只供本地使用, 发送消息时只会使用 [id] 和 [internalId].
@@ -208,6 +198,8 @@ public interface IMirai : LowLevelApiAccessor {
 
     /**
      * 查询某个用户的信息
+     *
+     * 此函数不会缓存信息. 每次调用此函数都会向服务器查询新信息.
      *
      * @since 2.1
      */
@@ -313,9 +305,7 @@ public interface IMirai : LowLevelApiAccessor {
     /**
      * 广播一个事件. 由 [Event.broadcast] 调用.
      */
-    public suspend fun broadcastEvent(event: Event) {
-        _EventBroadcast.implementation.broadcastImpl(event)
-    }
+    public suspend fun broadcastEvent(event: Event)
 }
 
 /**
@@ -337,11 +327,10 @@ public suspend inline fun IMirai.recallMessage(bot: Bot, message: MessageChain):
 @PublishedApi // for tests and potential public uses.
 @Suppress("ClassName")
 internal object _MiraiInstance {
-    private var instance: IMirai? = null
 
     @JvmStatic
     fun set(instance: IMirai) {
-        this.instance = instance
+        miraiInstance = instance
     }
 
     /**
@@ -349,9 +338,14 @@ internal object _MiraiInstance {
      */
     @JvmStatic
     fun get(): IMirai {
-        return instance ?: findMiraiInstance().also { instance = it }
+        return miraiInstance ?: findMiraiInstance().also { miraiInstance = it }
     }
 }
 
+// to overcome native gc issue
+private var miraiInstance: IMirai? = null
+
 @JvmSynthetic
-internal expect fun findMiraiInstance(): IMirai
+internal fun findMiraiInstance(): IMirai {
+    return loadService(IMirai::class, "net.mamoe.mirai.internal.MiraiImpl")
+}

@@ -1,21 +1,23 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.protocol.packet.chat.voice
 
-import kotlinx.io.core.ByteReadPacket
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.contact.uin
 import net.mamoe.mirai.internal.network.Packet
 import net.mamoe.mirai.internal.network.QQAndroidClient
 import net.mamoe.mirai.internal.network.protocol.data.proto.Cmd0x346
 import net.mamoe.mirai.internal.network.protocol.data.proto.Cmd0x388
+import net.mamoe.mirai.internal.network.protocol.data.proto.ImMsgBody
+import net.mamoe.mirai.internal.network.protocol.data.proto.MsgComm
 import net.mamoe.mirai.internal.network.protocol.packet.OutgoingPacketFactory
 import net.mamoe.mirai.internal.network.protocol.packet.OutgoingPacketWithRespType
 import net.mamoe.mirai.internal.network.protocol.packet.buildOutgoingUniPacket
@@ -148,6 +150,36 @@ internal class PttStore {
 
         }
 
+        operator fun invoke(
+            client: QQAndroidClient,
+            groupCode: Long,
+            ptt: ImMsgBody.Ptt,
+            msg: MsgComm.Msg,
+        ) = buildOutgoingUniPacket(client) {
+            writeProtoBuf(
+                Cmd0x388.ReqBody.serializer(), Cmd0x388.ReqBody(
+                    netType = 3, // wifi
+                    subcmd = 4,
+                    msgGetpttUrlReq = listOf(
+                        Cmd0x388.GetPttUrlReq(
+                            groupCode = groupCode,
+                            fileid = 0,
+                            fileId = ptt.fileId.toLong(),
+                            fileMd5 = ptt.fileMd5,
+                            dstUin = msg.msgHead.toUin,
+                            fileKey = ptt.groupFileKey,
+                            buType = 3,
+                            innerIp = 0,
+                            buildVer = "8.5.5".encodeToByteArray(),
+                            codec = ptt.format,
+                            reqTerm = 5,
+                            reqPlatformType = 9,
+                        )
+                    )
+                )
+            )
+        }
+
         @OptIn(ExperimentalStdlibApi::class)
         operator fun invoke(
             client: QQAndroidClient,
@@ -167,7 +199,7 @@ internal class PttStore {
                             dstUin = dstUin,
                             buType = 4,
                             innerIp = 0,
-                            buildVer = "6.5.5.663".encodeToByteArray(),
+                            buildVer = "8.5.5".encodeToByteArray(),
                             codec = 0,
                             reqTerm = 5,
                             reqPlatformType = 9

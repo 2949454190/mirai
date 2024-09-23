@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,7 +9,6 @@
 
 package net.mamoe.mirai.internal.contact
 
-import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.Friend
 import net.mamoe.mirai.contact.Member
 import net.mamoe.mirai.contact.Stranger
@@ -18,8 +17,16 @@ import net.mamoe.mirai.data.UserInfo
 import net.mamoe.mirai.event.broadcast
 import net.mamoe.mirai.event.events.*
 import net.mamoe.mirai.internal.QQAndroidBot
-import net.mamoe.mirai.internal.message.*
+import net.mamoe.mirai.internal.message.contextualBugReportException
+import net.mamoe.mirai.internal.message.flags.SkipEventBroadcast
+import net.mamoe.mirai.internal.message.image.*
+import net.mamoe.mirai.internal.message.protocol.MessageProtocolFacade
+import net.mamoe.mirai.internal.message.protocol.outgoing.HighwayUploader
+import net.mamoe.mirai.internal.message.protocol.outgoing.MessageProtocolStrategy
+import net.mamoe.mirai.internal.network.component.buildComponentStorage
 import net.mamoe.mirai.internal.network.components.BdhSession
+import net.mamoe.mirai.internal.network.components.ClockHolder
+import net.mamoe.mirai.internal.network.components.HttpClientProvider
 import net.mamoe.mirai.internal.network.highway.ChannelKind
 import net.mamoe.mirai.internal.network.highway.Highway
 import net.mamoe.mirai.internal.network.highway.ResourceKind.PRIVATE_IMAGE
@@ -28,10 +35,8 @@ import net.mamoe.mirai.internal.network.highway.tryServersUpload
 import net.mamoe.mirai.internal.network.protocol.data.proto.Cmd0x352
 import net.mamoe.mirai.internal.network.protocol.packet.chat.image.ImgStore
 import net.mamoe.mirai.internal.network.protocol.packet.chat.image.LongConn
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
 import net.mamoe.mirai.internal.utils.AtomicIntSeq
 import net.mamoe.mirai.internal.utils.C2CPkgMsgParsingCache
-import net.mamoe.mirai.internal.utils._miraiContentToString
 import net.mamoe.mirai.message.MessageReceipt
 import net.mamoe.mirai.message.data.*
 import net.mamoe.mirai.utils.*
@@ -62,8 +67,8 @@ internal sealed class AbstractUser(
 ) : User, AbstractContact(bot, parentCoroutineContext) {
 
     final override val id: Long = userInfo.uin
-    final override var nick: String = userInfo.nick
-    final override val remark: String = userInfo.remark
+    abstract override val nick: String
+    abstract override val remark: String
 
     val messageSeq = AtomicIntSeq.forMessageSeq()
     val fragmentedMessageMerger = C2CPkgMsgParsingCache()
@@ -76,7 +81,7 @@ internal sealed class AbstractUser(
             throw EventCancelledException("cancelled by BeforeImageUploadEvent.ToGroup")
         }
         val imageInfo = runBIO { resource.calculateImageInfo() }
-        val resp = bot.network.run {
+        val resp = bot.network.sendAndExpect(
             LongConn.OffPicUp(
                 bot.client,
                 Cmd0x352.TryUpImgReq(
@@ -89,37 +94,37 @@ internal sealed class AbstractUser(
                     imgHeight = imageInfo.height,
                     imgType = getIdByImageType(imageInfo.imageType),
                     fileName = "${resource.md5.toUHexString("")}.${resource.formatName}",
-                    imgOriginal = true,
+                    //For gif, using not original
+                    imgOriginal = (imageInfo.imageType != ImageType.GIF),
                     buildVer = bot.client.buildVer,
                 ),
-            ).sendAndExpect<LongConn.OffPicUp.Response>()
-        }
+            ), 5000, 2
+        )
 
         return when (resp) {
             is LongConn.OffPicUp.Response.FileExists -> {
-                val imageType = getImageType(resp.imageInfo.fileType)
-                    .takeIf { it != ExternalResource.DEFAULT_FORMAT_NAME }
-                    ?: resource.formatName
+                val imageType =
+                    getImageType(resp.imageInfo.fileType).takeIf { it != ExternalResource.DEFAULT_FORMAT_NAME }
+                        ?: resource.formatName
 
                 resp.imageInfo.run {
                     OfflineFriendImage(
                         imageId = generateImageIdFromResourceId(
-                            resourceId = resp.resourceId,
-                            format = imageType
+                            resourceId = resp.resourceId, format = imageType
                         ) ?: kotlin.run {
                             if (resp.imageInfo.fileMd5.size == 16) {
                                 generateImageId(resp.imageInfo.fileMd5, imageType)
                             } else {
                                 throw contextualBugReportException(
                                     "Failed to compute friend image image from resourceId: ${resp.resourceId}",
-                                    resp._miraiContentToString(),
+                                    resp.structureToString(),
                                     additional = "并附加此时正在上传的文件"
                                 )
                             }
                         },
                         width = fileWidth,
                         height = fileHeight,
-                        imageType = getImageTypeById(fileType),
+                        imageType = getImageTypeById(fileType) ?: ImageType.UNKNOWN,
                         size = resource.size
                     )
                 }.also {
@@ -141,16 +146,19 @@ internal sealed class AbstractUser(
                     )
                 }.recoverCatchingSuppressed {
                     // try upload as group image
-                    val response: ImgStore.GroupPicUp.Response = ImgStore.GroupPicUp(
-                        bot.client,
-                        uin = bot.id,
-                        groupCode = id,
-                        md5 = resource.md5,
-                        size = resource.size,
-                        picWidth = imageInfo.width,
-                        picHeight = imageInfo.height,
-                        picType = getIdByImageType(imageInfo.imageType),
-                    ).sendAndExpect(bot)
+                    val response: ImgStore.GroupPicUp.Response = bot.network.sendAndExpect(
+                        ImgStore.GroupPicUp(
+                            bot.client,
+                            uin = bot.id,
+                            groupCode = id,
+                            md5 = resource.md5,
+                            size = resource.size,
+                            picWidth = imageInfo.width,
+                            picHeight = imageInfo.height,
+                            picType = getIdByImageType(imageInfo.imageType),
+                            buType = 2, // not group
+                        )
+                    )
 
                     when (response) {
                         is ImgStore.GroupPicUp.Response.Failed -> {
@@ -161,8 +169,7 @@ internal sealed class AbstractUser(
                         }
                         is ImgStore.GroupPicUp.Response.RequireUpload -> {
                             // val servers = response.uploadIpList.zip(response.uploadPortList)
-                            Highway.uploadResourceBdh(
-                                bot = bot,
+                            Highway.uploadResourceBdh(bot = bot,
                                 resource = resource,
                                 kind = PRIVATE_IMAGE,
                                 commandId = 2,
@@ -173,8 +180,7 @@ internal sealed class AbstractUser(
                                         ssoAddresses = response.uploadIpList.zip(response.uploadPortList)
                                             .toMutableSet(),
                                     )
-                                }
-                            )
+                                })
                         }
                     }
                 }.recoverCatchingSuppressed {
@@ -195,8 +201,9 @@ internal sealed class AbstractUser(
                         resourceKind = PRIVATE_IMAGE,
                         channelKind = ChannelKind.HTTP
                     ) { ip, port ->
-                        Mirai.Http.postImage(
-                            serverIp = ip, serverPort = port,
+                        bot.components[HttpClientProvider].getHttpClient().postImage(
+                            serverIp = ip,
+                            serverPort = port,
                             htcmd = "0x6ff0070",
                             uin = bot.id,
                             groupcode = null,
@@ -206,7 +213,7 @@ internal sealed class AbstractUser(
                     }
                 }.recoverCatchingSuppressed {
                     // try upload by http on fallback server
-                    Mirai.Http.postImage(
+                    bot.components[HttpClientProvider].getHttpClient().postImage(
                         serverIp = "htdata2.qq.com",
                         htcmd = "0x6ff0070",
                         uin = bot.id,
@@ -237,30 +244,36 @@ internal sealed class AbstractUser(
     }
 }
 
-@Suppress("DuplicatedCode")
-internal suspend fun <C : User> SendMessageHandler<out C>.sendMessageImpl(
+
+internal suspend fun <C : AbstractContact> C.sendMessageImpl(
     message: Message,
+    messageProtocolStrategy: MessageProtocolStrategy<C>,
     preSendEventConstructor: (C, Message) -> MessagePreSendEvent,
     postSendEventConstructor: (C, MessageChain, Throwable?, MessageReceipt<C>?) -> MessagePostSendEvent<C>,
 ): MessageReceipt<C> {
-    val isMiraiInternal = if (message is MessageChain) {
-        message.anyIsInstance<MiraiInternalMessageFlag>()
+    val skipEvent = if (message is MessageChain) {
+        message.anyIsInstance<SkipEventBroadcast>()
     } else false
 
-    require(isMiraiInternal || !message.isContentEmpty()) { "message is empty" }
+    require(!message.isContentEmpty()) { "message is empty" }
 
-    val chain = contact.broadcastMessagePreSendEvent(message, isMiraiInternal, preSendEventConstructor)
+    val chain = broadcastMessagePreSendEvent(message, skipEvent, preSendEventConstructor)
 
-    val result = this
-        .runCatching { sendMessage(message, chain, isMiraiInternal, SendMessageStep.FIRST) }
+    val result = kotlin.runCatching {
+        MessageProtocolFacade.preprocessAndSendOutgoing(this, chain, buildComponentStorage {
+            set(MessageProtocolStrategy, messageProtocolStrategy)
+            set(HighwayUploader, HighwayUploader.Default)
+            set(ClockHolder, bot.components[ClockHolder])
+        })
+    }
 
     if (result.isSuccess) {
         // logMessageSent(result.getOrNull()?.source?.plus(chain) ?: chain) // log with source
-        contact.logMessageSent(chain)
+        bot.logger.verbose("$this <- $chain".replaceMagicCodes())
     }
 
-    if (!isMiraiInternal) {
-        postSendEventConstructor(contact, chain, result.exceptionOrNull(), result.getOrNull()).broadcast()
+    if (!skipEvent) {
+        postSendEventConstructor(this, chain, result.exceptionOrNull(), result.getOrNull()).broadcast()
     }
 
     return result.getOrThrow()

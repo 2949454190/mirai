@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -13,17 +13,20 @@
 package net.mamoe.mirai
 
 import kotlinx.coroutines.*
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.contact.*
+import net.mamoe.mirai.contact.friendgroup.FriendGroups
 import net.mamoe.mirai.event.EventChannel
 import net.mamoe.mirai.event.events.BotEvent
 import net.mamoe.mirai.message.action.BotNudge
 import net.mamoe.mirai.message.action.MemberNudge
 import net.mamoe.mirai.network.LoginFailedException
 import net.mamoe.mirai.utils.BotConfiguration
+import net.mamoe.mirai.utils.ConcurrentHashMap
 import net.mamoe.mirai.utils.MiraiLogger
 import net.mamoe.mirai.utils.NotStableForInheritance
-import java.util.concurrent.ConcurrentHashMap
+import kotlin.jvm.JvmStatic
+import kotlin.jvm.JvmSynthetic
 
 /**
  * 登录, 返回 [this]
@@ -110,6 +113,13 @@ public interface Bot : CoroutineScope, ContactOrBot, UserOrBot {
      */
     public val friends: ContactList<Friend>
 
+    /**
+     * 全部的好友分组
+     *
+     * @since 2.13
+     */
+    public val friendGroups: FriendGroups
+
 
     /**
      * 以 [对方 QQ 号码][id] 获取一个好友对象, 在获取失败时返回 `null`.
@@ -180,7 +190,7 @@ public interface Bot : CoroutineScope, ContactOrBot, UserOrBot {
 
     public companion object {
         @Suppress("ObjectPropertyName")
-        internal val _instances: ConcurrentHashMap<Long, Bot> = ConcurrentHashMap()
+        internal val _instances: MutableMap<Long, Bot> = ConcurrentHashMap()
 
         /**
          * 复制一份此时的 [Bot] 实例列表.

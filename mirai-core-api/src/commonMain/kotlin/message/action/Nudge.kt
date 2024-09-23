@@ -1,14 +1,14 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 package net.mamoe.mirai.message.action
 
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.*
@@ -16,6 +16,8 @@ import net.mamoe.mirai.event.events.NudgeEvent
 import net.mamoe.mirai.message.data.PokeMessage
 import net.mamoe.mirai.utils.BotConfiguration
 import net.mamoe.mirai.utils.BotConfiguration.MiraiProtocol
+import kotlin.jvm.JvmStatic
+import kotlin.jvm.JvmSynthetic
 
 /**
  * 一个 "戳一戳" 动作.
@@ -38,11 +40,13 @@ public sealed class Nudge {
     /**
      * 发送戳一戳消息到 [receiver].
      *
-     * 需要 [使用协议][BotConfiguration.protocol] [MiraiProtocol.ANDROID_PHONE].
+     * 需要使用支持的[协议][BotConfiguration.protocol] [MiraiProtocol.ANDROID_PHONE], [ANDROID_PAD 协议][MiraiProtocol.ANDROID_PAD] 或 [MiraiProtocol.IPAD].
+     * + 自 2.10 起才支持使用 IPAD 协议发送.
+     * + 自 2.16.0-RC 起才支持使用 PAD 协议发送.
      *
      * @param receiver 这条 "戳一戳" 消息的接收对象. (不是 "戳" 动作的对象, 而是接收 "A 戳了 B" 这条消息的对象)
      * @return 成功发送时为 `true`. 若对方禁用 "戳一戳" 功能, 返回 `false`.
-     * @throws UnsupportedOperationException 当未使用 [安卓协议][MiraiProtocol.ANDROID_PHONE] 时抛出
+     * @throws UnsupportedOperationException 当未使用 [ANDROID_PHONE 协议][MiraiProtocol.ANDROID_PHONE], [ANDROID_PAD 协议][MiraiProtocol.ANDROID_PAD] 或 [IPAD 协议][MiraiProtocol.IPAD] 时抛出
      *
      * @see NudgeEvent 事件
      * @see Contact.sendNudge
@@ -57,11 +61,13 @@ public sealed class Nudge {
         /**
          * 发送戳一戳消息.
          *
-         * 需要 [使用协议][BotConfiguration.protocol] [MiraiProtocol.ANDROID_PHONE].
+         * 需要使用支持的[协议][BotConfiguration.protocol] [MiraiProtocol.ANDROID_PHONE], [ANDROID_PAD 协议][MiraiProtocol.ANDROID_PAD] 或 [MiraiProtocol.IPAD].
+         * + 自 2.10 起才支持使用 IPAD 协议发送.
+         * + 自 2.16.0-RC 起才支持使用 PAD 协议发送.
          *
-         * @return 成功发送时为 `true`. 若对方禁用 "戳一戳" 功能, 返回 `false`.
+         * @return 成功发送时为 `true`. 若对方禁用 "戳一戳" 功能或今日 "戳一戳" 次数已达到上限, 返回 `false`.
          *
-         * @throws UnsupportedOperationException 当未使用 [安卓协议][MiraiProtocol.ANDROID_PHONE] 时抛出
+         * @throws UnsupportedOperationException 当未使用 [ANDROID_PHONE 协议][MiraiProtocol.ANDROID_PHONE], [ANDROID_PAD 协议][MiraiProtocol.ANDROID_PAD] 或 [IPAD 协议][MiraiProtocol.IPAD] 时抛出
          *
          * @see NudgeEvent 事件
          */

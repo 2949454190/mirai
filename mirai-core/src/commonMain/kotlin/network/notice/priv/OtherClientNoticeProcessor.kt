@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.notice.priv
@@ -22,8 +22,8 @@ import net.mamoe.mirai.event.events.OtherClientOfflineEvent
 import net.mamoe.mirai.event.events.OtherClientOnlineEvent
 import net.mamoe.mirai.internal.contact.appId
 import net.mamoe.mirai.internal.contact.createOtherClient
-import net.mamoe.mirai.internal.message.OnlineMessageSourceFromFriendImpl
 import net.mamoe.mirai.internal.message.contextualBugReportException
+import net.mamoe.mirai.internal.message.source.OnlineMessageSourceFromFriendImpl
 import net.mamoe.mirai.internal.network.components.ContactUpdater
 import net.mamoe.mirai.internal.network.components.MixedNoticeProcessor
 import net.mamoe.mirai.internal.network.components.NoticePipelineContext
@@ -31,11 +31,11 @@ import net.mamoe.mirai.internal.network.handler.logger
 import net.mamoe.mirai.internal.network.protocol.data.jce.RequestPushStatus
 import net.mamoe.mirai.internal.network.protocol.data.proto.MsgComm
 import net.mamoe.mirai.internal.network.protocol.data.proto.SubMsgType0x7
-import net.mamoe.mirai.internal.utils._miraiContentToString
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.message.data.PlainText
 import net.mamoe.mirai.message.data.buildMessageChain
 import net.mamoe.mirai.utils.context
+import net.mamoe.mirai.utils.structureToString
 
 /**
  * @see OtherClientOnlineEvent
@@ -70,9 +70,9 @@ internal class OtherClientNoticeProcessor : MixedNoticeProcessor() {
                             bot.network.logger.warning(
                                 contextualBugReportException(
                                     "SvcRequestPushStatus (OtherClient online)",
-                                    "packet: \n" + data._miraiContentToString() +
+                                    "packet: \n" + data.structureToString() +
                                             "\n\nquery: \n" +
-                                            Mirai.getOnlineOtherClientsList(bot)._miraiContentToString(),
+                                            Mirai.getOnlineOtherClientsList(bot).structureToString(),
                                     additional = "Failed to find corresponding instanceInfo.",
                                 ),
                             )

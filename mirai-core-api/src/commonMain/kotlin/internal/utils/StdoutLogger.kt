@@ -10,8 +10,6 @@
 package net.mamoe.mirai.internal.utils
 
 import net.mamoe.mirai.utils.*
-import java.text.SimpleDateFormat
-import java.util.*
 
 
 /**
@@ -39,6 +37,7 @@ import java.util.*
  * @see SingleFileLogger 使用单一文件记录日志
  * @see DirectoryLogger 在一个目录中按日期存放文件记录日志, 自动清理过期日志
  */
+@OptIn(MiraiExperimentalApi::class)
 internal open class StdoutLogger constructor(
     override val identity: String? = "Mirai",
     /**
@@ -65,7 +64,7 @@ internal open class StdoutLogger constructor(
         get() = when (this) {
             SimpleLogger.LogPriority.VERBOSE -> Color.RESET
             SimpleLogger.LogPriority.INFO -> Color.LIGHT_GREEN
-            SimpleLogger.LogPriority.WARNING -> Color.LIGHT_RED
+            SimpleLogger.LogPriority.WARNING -> Color.LIGHT_YELLOW
             SimpleLogger.LogPriority.ERROR -> Color.RED
             SimpleLogger.LogPriority.DEBUG -> Color.LIGHT_CYAN
         }
@@ -101,11 +100,8 @@ internal open class StdoutLogger constructor(
         else debug(message.toString())
     }
 
-    protected open val timeFormat: SimpleDateFormat by threadLocal {
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-    }
 
-    private val currentTimeFormatted get() = timeFormat.format(Date())
+    private val currentTimeFormatted get() = currentTimeFormatted(null)
 
     @MiraiExperimentalApi("This is subject to change.")
     protected enum class Color(private val format: String) {

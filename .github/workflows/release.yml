@@ -4,24 +4,65 @@ on:
   push:
     tags:
       - 'v*' # 正式版本
+    paths-ignore:
+      - 'docs/**'
+      - 'mirai-console/docs/**'
+      - '**/*.md'
+
 
 jobs:
-  publish-mirai:
+  initialize-sonatype-stage:
+    name: "Initialize sonatype staging repository"
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Checkout submodules
-        run: git submodule update --init --recursive
-
-      - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
+      - uses: actions/checkout@v3
         with:
-          java-version: 1.8
+          submodules: 'recursive'
 
-      - name: chmod -R 777 *
-        run: chmod -R 777 *
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - run: chmod -R 777 *
+
+      - name: Create publishing staging repository
+        run: ./gradlew runcihelper --args create-stage-repo --scan "-Pcihelper.cert.username=${{ secrets.SONATYPE_USER }}" "-Pcihelper.cert.password=${{ secrets.SONATYPE_KEY }}" "-Pcihelper.cert.profileid=${{ secrets.SONATYPE_PROFILEID }}"
+
+      - name: Cache staging repository id
+        uses: actions/upload-artifact@v3
+        with:
+          name: publish-stage-id
+          path: ci-release-helper/repoid
+
+  publish-others:
+    name: "Others (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    needs: [ initialize-sonatype-stage ]
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-12
+    env:
+      # All targets MUST be enabled. See #2270.
+      gradleArgs: --scan "-Dmirai.target=other" "-Pkotlin.compiler.execution.strategy=in-process"
+      isMac: ${{ startsWith(matrix.os, 'macos') }}
+      isWindows: ${{ startsWith(matrix.os, 'windows') }}
+      isUbuntu: ${{ startsWith(matrix.os, 'ubuntu') }}
+      isUnix: ${{ startsWith(matrix.os, 'macos') || startsWith(matrix.os, 'ubuntu') }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Keys setup
         shell: bash
@@ -29,52 +70,99 @@ jobs:
           mkdir build-gpg-sign
           echo "$GPG_PRIVATE" > build-gpg-sign/keys.gpg
           echo "$GPG_PUBLIC_" > build-gpg-sign/keys.gpg.pub
-          mkdir build-secret-keys
-          echo "$SONATYPE_USER" > build-secret-keys/sonatype.key
-          echo "$SONATYPE_KEY" >> build-secret-keys/sonatype.key
         env:
           GPG_PRIVATE: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PUBLIC_: ${{ secrets.GPG_PUBLIC_KEY }}
-          SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
-          SONATYPE_KEY: ${{ secrets.SONATYPE_KEY }}
 
-      - name: Init gradle project
-        run: ./gradlew clean --scan
+      - name: Setup Android SDK Ubuntu
+        if: ${{ env.isUbuntu == 'true' }}
+        run: 'touch local.properties && echo sdk.dir=/usr/local/lib/android/sdk >> local.properties'
 
-      - name: Check keys
-        run: ./gradlew ensureMavenCentralAvailable
+      - name: Setup Android SDK macOS
+        if: ${{ env.isMac == 'true' }}
+        run: 'touch local.properties && echo sdk.dir=/Users/runner/Library/Android/sdk >> local.properties'
 
-      - name: fillBuildConstants
-        run: >
-          ./gradlew
-          fillBuildConstants --scan
+      - name: Setup Android SDK Windows
+        if: ${{ env.isWindows == 'true' }}
+        run: 'echo sdk.dir=C:\Android\android-sdk >> local.properties'
 
-      - name: Assemble
-        run: ./gradlew assemble --scan
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
 
-      - name: Check
-        run: >
-          ./gradlew check --scan
-          -Dmirai.network.show.all.components=true
-          -Dkotlinx.coroutines.debug=on
-          -Dmirai.network.show.packet.details=true
-      
-      - name: Ensure all compilations completed before publish
-        run: >
-          ./gradlew publishToMavenLocal --info --scan
+      - name: Cache konan
+        uses: pat-s/always-upload-cache@v3.0.11
+        with:
+          path: ~/.konan
+          key: ${{ runner.os }}-gradle-${{ hashFiles('*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-      - name: Publish all artifacts
-        run: >
-          ./gradlew publish --no-parallel --info --scan
+      - if: ${{ env.isUnix == 'true' }}
+        run: chmod -R 777 *
+
+      # Prepare environment for linking for macOS
+
+      - name: Clean and download dependencies
+        run: ./gradlew clean ${{ env.gradleArgs }}
+
+      - name: "Assemble"
+        run: ./gradlew assemble ${{ env.gradleArgs }}
+
+      - name: Publish Local Artifacts
+        if: ${{ env.enableLocalPublishingTest == 'true' }}
+        run: ./gradlew :mirai-deps-test:publishMiraiArtifactsToMavenLocal ${{ env.gradleArgs }} "-Dmirai.build.project.version=2.99.0-deps-test"
+
+      - name: "Check"
+        run: ./gradlew check ${{ env.gradleArgs }}
+
+      - if: ${{ env.isMac == 'true' }}
+        name: Ensure KDoc valid
+        run: ./gradlew dokkaHtmlMultiModule ${{ env.gradleArgs }}
+
+      - name: Initialize Publishing Caching Repository
+        run: ./gradlew runcihelper --args sync-maven-metadata  ${{ env.gradleArgs }}
+
+      - name: Publish
+        if: ${{ env.isMac == 'true' }}
+        run: ./gradlew publishAllPublicationsToMiraiStageRepoRepository ${{ env.gradleArgs }}
+
+      - name: Restore staging repository id
+        uses: actions/download-artifact@v3
+        with:
+          name: publish-stage-id
+          path: ci-release-helper/repoid
+
+      - name: Release RAM
+        run: node ci-release-helper/scripts/kill-java.js
+
+      - name: Publish to maven central
+        run: ./gradlew runcihelper --args publish-to-maven-central --scan "-Pcihelper.cert.username=${{ secrets.SONATYPE_USER }}" "-Pcihelper.cert.password=${{ secrets.SONATYPE_KEY }}"
 
       - name: Publish Gradle plugin
-        run: >
-          ./gradlew
-          :mirai-console-gradle:publishPlugins --scan
+        run: ./gradlew
+          :mirai-console-gradle:publishPlugins ${{ env.gradleArgs }}
           -Dgradle.publish.key=${{ secrets.GRADLE_PUBLISH_KEY }} -Pgradle.publish.key=${{ secrets.GRADLE_PUBLISH_KEY }}
           -Dgradle.publish.secret=${{ secrets.GRADLE_PUBLISH_SECRET }} -Pgradle.publish.secret=${{ secrets.GRADLE_PUBLISH_SECRET }}
+        continue-on-error: true
 
-      - name: Gradle :ci-release-helper:closeRepository
-        run: >
-          ./gradlew
-          :ci-release-helper:closeRepository --info --scan
+#
+#  close-repository:
+#    runs-on: macos-12
+#    needs:
+#      - publish-others
+#      - publish-core-native
+#    steps:
+#      - uses: actions/checkout@v3
+#        with:
+#          submodules: 'recursive'
+#
+#      - uses: actions/setup-java@v3
+#        with:
+#          distribution: 'adopt-openj9'
+#          java-version: '17'
+#
+#      - name: Setup Gradle
+#        uses: gradle/gradle-build-action@v2
+#
+#      - name: Close repository
+#        run: ./gradlew :ci-release-helper:closeRepository --scan

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -12,13 +12,12 @@
 
 package net.mamoe.mirai.contact.announcement
 
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.contact.Group
 import net.mamoe.mirai.contact.NormalMember
 import net.mamoe.mirai.contact.PermissionDeniedException
 import net.mamoe.mirai.utils.NotStableForInheritance
-import java.time.Instant
 
 
 /**
@@ -65,7 +64,7 @@ public interface OnlineAnnouncement : Announcement {
     /**
      * 公告发出的时间，为 EpochSecond (自 1970-01-01T00：00：00Z 的秒数)
      *
-     * @see Instant.ofEpochSecond
+     * @see java.time.Instant.ofEpochSecond
      */
     public val publicationTime: Long
 
@@ -78,6 +77,29 @@ public interface OnlineAnnouncement : Announcement {
      * @see Announcements.delete
      */
     public suspend fun delete(): Boolean = group.announcements.delete(fid)
+
+    /**
+     * 获取 已确认/未确认 的群成员
+     *
+     * @param confirmed 是否确认
+     * @return 群成员列表
+     *
+     * @throws PermissionDeniedException 当没有权限时抛出
+     * @throws IllegalStateException 当协议异常时抛出
+     *
+     * @see Announcements.members
+     */
+    public suspend fun members(confirmed: Boolean): List<NormalMember> = group.announcements.members(fid, confirmed)
+
+    /**
+     * 提醒 未确认 的群成员
+     *
+     * @throws PermissionDeniedException 当没有权限时抛出
+     * @throws IllegalStateException 当协议异常时抛出
+     *
+     * @see Announcements.remind
+     */
+    public suspend fun remind(): Unit = group.announcements.remind(fid)
 }
 
 /**

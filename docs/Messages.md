@@ -18,9 +18,11 @@
   - [由 mirai 码字符串取得 `MessageChain` 实例](#由-mirai-码字符串取得-messagechain-实例)
   - [`serializeToMiraiCode` 与 `toString` 的区别](#serializetomiraicode-与-tostring-的区别)
 
+---
+
 ## 消息系统
 
-在 Contacts 章节提到，要发送消息，使用 `Contact.sendMessage(Message)`。`Message` 架构如下图所示。
+在[Contacts 章节](Contacts.md)提到，要发送消息，使用 `Contact.sendMessage(Message)`。`Message` 架构如下图所示。
 
 [![](https://mermaid.ink/img/eyJjb2RlIjoiY2xhc3NEaWFncmFtXG5cbmNsYXNzIE1lc3NhZ2VDaGFpblxuTWVzc2FnZUNoYWluIDogTGlzdH5TaW5nbGVNZXNzYWdlflxuXG5NZXNzYWdlPHwtLU1lc3NhZ2VDaGFpblxuTWVzc2FnZTx8LS1TaW5nbGVNZXNzYWdlXG5cbk1lc3NhZ2VDaGFpbiBvLS0gU2luZ2xlTWVzc2FnZVxuXG5TaW5nbGVNZXNzYWdlPHwtLU1lc3NhZ2VDb250ZW50XG5TaW5nbGVNZXNzYWdlPHwtLU1lc3NhZ2VNZXRhZGF0YVxuXG4iLCJtZXJtYWlkIjp7InRoZW1lIjoiZGVmYXVsdCJ9LCJ1cGRhdGVFZGl0b3IiOmZhbHNlfQ)](https://mermaid-js.github.io/mermaid-live-editor/#/edit/eyJjb2RlIjoiY2xhc3NEaWFncmFtXG5cbmNsYXNzIE1lc3NhZ2VDaGFpblxuTWVzc2FnZUNoYWluIDogTGlzdH5TaW5nbGVNZXNzYWdlflxuXG5NZXNzYWdlPHwtLU1lc3NhZ2VDaGFpblxuTWVzc2FnZTx8LS1TaW5nbGVNZXNzYWdlXG5cbk1lc3NhZ2VDaGFpbiBvLS0gU2luZ2xlTWVzc2FnZVxuXG5TaW5nbGVNZXNzYWdlPHwtLU1lc3NhZ2VDb250ZW50XG5TaW5nbGVNZXNzYWdlPHwtLU1lc3NhZ2VNZXRhZGF0YVxuXG4iLCJtZXJtYWlkIjp7InRoZW1lIjoiZGVmYXVsdCJ9LCJ1cGRhdGVFZGl0b3IiOmZhbHNlfQ)
 
@@ -56,6 +58,8 @@ Mirai 支持富文本消息。
 
 > 回到 [目录](#目录)
 
+---
+
 ## 消息元素
 
 Mirai 支持多种消息类型。
@@ -65,7 +69,7 @@ Mirai 支持多种消息类型。
 | 方法                      | 解释                                                                                          |
 |:-------------------------|:---------------------------------------------------------------------------------------------|
 | `serializeToMiraiCode()` | 对应的 Mirai 码. 消息的一种序列化方式，格式为 `[mirai:TYPE:PROP]`，其中 `TYPE` 为消息类型, `PROP` 为属性 |
-| `contentToSting()`       | QQ 对话框中以纯文本方式会显示的消息内容。无法用纯文字表示的消息会丢失信息，如任何图片都是 `[图片]`             |
+| `contentToString()`       | QQ 对话框中以纯文本方式会显示的消息内容。无法用纯文字表示的消息会丢失信息，如任何图片都是 `[图片]`             |
 | `toString()`             | Java 对象的 `toString()`，会尽可能包含多的信息用于调试作用，**行为可能不确定**                           |
 
 各类型消息元素及其 `contentToString()` 如下表格所示。
@@ -85,6 +89,7 @@ Mirai 支持多种消息类型。
 [`MusicShare`]: ../mirai-core-api/src/commonMain/kotlin/message/data/MusicShare.kt
 [`Dice`]: ../mirai-core-api/src/commonMain/kotlin/message/data/Dice.kt
 [`FileMessage`]: ../mirai-core-api/src/commonMain/kotlin/message/data/FileMessage.kt
+[`RockPaperScissors`]: ../mirai-core-api/src/commonMain/kotlin/message/data/RockPaperScissors.kt
 
 [`MessageSource`]: ../mirai-core-api/src/commonMain/kotlin/message/data/MessageSource.kt
 [`QuoteReply`]: ../mirai-core-api/src/commonMain/kotlin/message/data/QuoteReply.kt
@@ -115,6 +120,7 @@ Mirai 支持多种消息类型。
 | [`SimpleServiceMessage`] | （不稳定）服务消息      | `$content`              |          2.0          |
 |      [`MusicShare`]      | 音乐分享              | `[分享]曲名`             |          2.1          |
 |         [`Dice`]         | 魔法表情骰子           | `[骰子:$value]`         |          2.5          |
+| [`RockPaperScissors`]    | 魔法表情猜拳           | `[石头]`/`[剪刀]`/`[布]` |         2.14          |
 |     [`FileMessage`]      | 文件消息              | `[文件]文件名称`          |          2.5          |
 |        [`Audio`]         | 语音                 | `[语音消息]`              |          2.7          |
 
@@ -181,12 +187,13 @@ contact.sendMessage(PlainText("你要的图片是") + Image("{f8f1ab55-bf8e-4236
 contact.sendMessage(new PlainText("你要的图片是：").plus(Image.fromId("{f8f1ab55-bf8e-4236-b55e-955848d7069f}.png"))); // 一个纯文本加一个图片
 ```
 
-注: 当需要拼接的消息较多的时候, 建议使用 [构造消息链](#构造消息链) 而不是 `plus`
-  - `plus` 在需要拼接的元素较多的时候运行效率较慢
+注当需要拼接的消息元素较多时，建议[使用构建器](#构造消息链)。
+
+在 mirai 2.12 起，`plus` 在不同时涉及消息链以及元数据时，速度与构建器相当。而在这以前 `plus` 在很多情况下都比使用构建器慢。（备注：只要不是要连接数百个或更多元素，这个性能差距实际上也可以忽略）
 
 ### 构造消息链
 
-更复杂的消息则需要构造为消息链。
+多个消息元素可以作为消息链组合。
 
 #### 在 Kotlin 构造消息链
 
@@ -199,7 +206,7 @@ contact.sendMessage(new PlainText("你要的图片是：").plus(Image.fromId("{f
 | `fun messageChainOf(vararg Message): MessageChain`      |
 | `fun Message.plus(tail: Message): MessageChain`         |
 
-可以使用如上表格所示的方法构造，或使用 DSL builder。
+可以使用如上表格所示的方法构造，或使用 DSL 构建器。构建器的简单定义如下：
 ```kotlin
 class MessageChainBuilder : MutableList<SingleMessage>, Appendable {
     operator fun Message.unaryPlus()
@@ -207,6 +214,8 @@ class MessageChainBuilder : MutableList<SingleMessage>, Appendable {
     fun add(vararg messages: Message)
 }
 ```
+
+在 Kotlin 的使用示例：
 
 ```kotlin
 val chain = buildMessageChain {
@@ -248,9 +257,12 @@ MessageChain chain = new MessageChainBuilder()
 
 ### 作为字符串处理消息
 
-通常要把消息作为字符串处理，在 Kotlin 使用 `message.content` 或在 Java 使用 `message.contentToString()`。
-
+通常要把消息作为字符串处理，可在 Kotlin 使用 `message.content` 或在 Java 使用 `message.contentToString()`。
 获取到的字符串表示只包含各 [`MessageContent`] 以官方风格显示的消息内容。如 `"你本次测试的成绩是[图片]"`、`[语音]`、`[微笑]`。
+
+
+使用 `toString()` 对某些元素可以获得与 `contentToString()` 相似的结果，但 **`toString` 是不稳定**的，可能在未来版本变更。
+`contentToString()` 实际上也**没有**对所有元素都作出稳定性承诺，在开发时应尽可能避免基于复杂消息类型的字符串表示处理。
 
 ### 处理富文本消息
 
@@ -370,7 +382,7 @@ for (SingleMessage message : messageChain) {
 }
 ```
 
-也可以使用 `messageChain.iterator()`。
+也可以使用 `messageChain.iterator()`、 `messageChain.stream()` 等。
 
 ### 序列化
 
@@ -478,6 +490,9 @@ bot.getEventChannel().subscribeAlways<GroupMessageEvent>(event -> {
 
 在 [消息元素](#消息元素) 表格中找到你需要的消息元素，然后到源码内注释查看相应的用法说明。
 
+> 回到 [目录](#目录)
+
+---
 
 ## Mirai 码
 
@@ -559,6 +574,7 @@ at.serializeToMiraiCode() // 结果为 `[mirai:at:123]`
 |         [`Dice`]         | `[mirai:dice:$value]`                            |
 |      [`MusicShare`]      | `[mirai:musicshare:$args]`                       |
 |     [`FileMessage`]      | `[mirai:file:$id,$internalId,$name,$size]`       |
+| [`RockPaperScissors`]    | `[mirai:rps:$name]`                              |
 
 ### 由 mirai 码字符串取得 `MessageChain` 实例
 

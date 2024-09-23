@@ -1,15 +1,15 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.protocol.packet
 
-import kotlinx.io.core.ByteReadPacket
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.event.Event
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.network.Packet
@@ -18,6 +18,7 @@ import net.mamoe.mirai.internal.network.protocol.packet.chat.*
 import net.mamoe.mirai.internal.network.protocol.packet.chat.image.ImgStore
 import net.mamoe.mirai.internal.network.protocol.packet.chat.image.LongConn
 import net.mamoe.mirai.internal.network.protocol.packet.chat.receive.*
+import net.mamoe.mirai.internal.network.protocol.packet.chat.video.PttCenterSvr
 import net.mamoe.mirai.internal.network.protocol.packet.chat.voice.PttStore
 import net.mamoe.mirai.internal.network.protocol.packet.list.FriendList
 import net.mamoe.mirai.internal.network.protocol.packet.list.ProfileService
@@ -26,7 +27,9 @@ import net.mamoe.mirai.internal.network.protocol.packet.login.ConfigPushSvc
 import net.mamoe.mirai.internal.network.protocol.packet.login.Heartbeat
 import net.mamoe.mirai.internal.network.protocol.packet.login.StatSvc
 import net.mamoe.mirai.internal.network.protocol.packet.login.WtLogin
+import net.mamoe.mirai.internal.network.protocol.packet.summarycard.ChangeFriendRemark
 import net.mamoe.mirai.internal.network.protocol.packet.summarycard.SummaryCard
+import net.mamoe.mirai.utils.DeprecatedSinceMirai
 import net.mamoe.mirai.utils.MiraiLoggerWithSwitch
 
 internal sealed class PacketFactory<TPacket : Packet?> {
@@ -117,6 +120,7 @@ internal suspend inline fun <P : Packet?> IncomingPacketFactory<P>.decode(
     level = DeprecationLevel.HIDDEN,
 )
 @PublishedApi
+@DeprecatedSinceMirai(hiddenSince = "2.7")
 internal val PacketLogger: MiraiLoggerWithSwitch
     get() = PacketCodec.PacketLogger
 
@@ -127,6 +131,7 @@ internal object KnownPacketFactories {
     object OutgoingFactories : List<OutgoingPacketFactory<*>> by mutableListOf(
         WtLogin.Login,
         WtLogin.ExchangeEmp,
+        WtLogin.TransEmp,
         StatSvc.Register,
         StatSvc.GetOnlineStatus,
         StatSvc.SimpleGet,
@@ -136,14 +141,19 @@ internal object KnownPacketFactories {
         MessageSvcPbSendMsg,
         MessageSvcPbDeleteMsg,
         MessageSvcPbGetRoamMsgReq,
+        MessageSvcPbGetGroupMsg,
         FriendList.GetFriendGroupList,
         FriendList.DelFriend,
         FriendList.GetTroopListSimplify,
         FriendList.GetTroopMemberList,
+        FriendList.SetGroupReqPack,
+        FriendList.MoveGroupMemReqPack,
         ImgStore.GroupPicUp,
         PttStore.GroupPttUp,
         PttStore.GroupPttDown,
         PttStore.C2CPttDown,
+        PttCenterSvr.GroupShortVideoUpReq,
+        PttCenterSvr.ShortVideoDownReq,
         LongConn.OffPicUp,
 //        LongConn.OffPicDown,
         TroopManagement.EditSpecialTitle,
@@ -151,11 +161,13 @@ internal object KnownPacketFactories {
         TroopManagement.GroupOperation,
         TroopManagement.GetTroopConfig,
         TroopManagement.ModifyAdmin,
+        TroopManagement.GetGroupLastMsgSeq,
         //  TroopManagement.GetGroupInfo,
         TroopManagement.EditGroupNametag,
         TroopManagement.Kick,
         TroopManagement.SwitchAnonymousChat,
         TroopEssenceMsgManager.SetEssence,
+        TroopEssenceMsgManager.RemoveEssence,
         NudgePacket,
         Heartbeat.Alive,
         PbMessageSvc.PbMsgWithDraw,
@@ -167,6 +179,7 @@ internal object KnownPacketFactories {
         StrangerList.GetStrangerList,
         StrangerList.DelStranger,
         SummaryCard.ReqSummaryCard,
+        ChangeFriendRemark,
         MusicSharePacket,
         *FileManagement.factories
     )

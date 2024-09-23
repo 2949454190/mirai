@@ -18,6 +18,9 @@ import net.mamoe.mirai.event.AbstractEvent
 import net.mamoe.mirai.internal.network.Packet
 import net.mamoe.mirai.message.data.MessageSource
 import net.mamoe.mirai.utils.MiraiInternalApi
+import net.mamoe.mirai.utils.isSameClass
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
 
 
 /**
@@ -56,6 +59,7 @@ public sealed class MessageRecallEvent : BotEvent, AbstractEvent() {
     /**
      * 好友消息撤回事件
      */
+    @OptIn(MiraiInternalApi::class)
     public data class FriendRecall @MiraiInternalApi public constructor(
         public override val bot: Bot,
         public override val messageIds: IntArray,
@@ -78,18 +82,14 @@ public sealed class MessageRecallEvent : BotEvent, AbstractEvent() {
         @Suppress("DuplicatedCode")
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-
-            other as FriendRecall
+            if (other !is FriendRecall || !isSameClass(this, other)) return false
 
             if (bot != other.bot) return false
             if (!messageIds.contentEquals(other.messageIds)) return false
             if (!messageInternalIds.contentEquals(other.messageInternalIds)) return false
             if (messageTime != other.messageTime) return false
             if (operatorId != other.operatorId) return false
-            if (operator != other.operator) return false
-
-            return true
+            return operator == other.operator
         }
 
         override fun hashCode(): Int {
@@ -106,6 +106,7 @@ public sealed class MessageRecallEvent : BotEvent, AbstractEvent() {
     /**
      * 群消息撤回事件.
      */
+    @OptIn(MiraiInternalApi::class)
     public data class GroupRecall @MiraiInternalApi constructor(
         public override val bot: Bot,
         public override val authorId: Long,
@@ -123,9 +124,7 @@ public sealed class MessageRecallEvent : BotEvent, AbstractEvent() {
         @Suppress("DuplicatedCode")
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
-            if (javaClass != other?.javaClass) return false
-
-            other as GroupRecall
+            if (other !is GroupRecall || !isSameClass(this, other)) return false
 
             if (bot != other.bot) return false
             if (authorId != other.authorId) return false
@@ -134,9 +133,7 @@ public sealed class MessageRecallEvent : BotEvent, AbstractEvent() {
             if (messageTime != other.messageTime) return false
             if (operator != other.operator) return false
             if (group != other.group) return false
-            if (author != other.author) return false
-
-            return true
+            return author == other.author
         }
 
         override fun hashCode(): Int {

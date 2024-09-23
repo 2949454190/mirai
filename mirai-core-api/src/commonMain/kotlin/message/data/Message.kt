@@ -1,17 +1,12 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:Suppress(
-    "MemberVisibilityCanBePrivate", "unused", "EXPERIMENTAL_API_USAGE",
-    "NOTHING_TO_INLINE", "INVISIBLE_MEMBER", "INVISIBLE_REFERENCE",
-    "INAPPLICABLE_JVM_NAME"
-)
 @file:JvmMultifileClass
 @file:JvmName("MessageUtils")
 
@@ -24,8 +19,13 @@ import net.mamoe.mirai.contact.Contact
 import net.mamoe.mirai.message.MessageReceipt
 import net.mamoe.mirai.message.code.MiraiCode
 import net.mamoe.mirai.message.code.MiraiCode.serializeToMiraiCode
+import net.mamoe.mirai.message.data.Message.Companion.toString
 import net.mamoe.mirai.message.data.MessageChain.Companion.serializeToJsonString
-import kotlin.internal.LowPriorityInOverloadResolution
+import net.mamoe.mirai.message.data.visitor.MessageVisitor
+import net.mamoe.mirai.utils.MiraiInternalApi
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
+import kotlin.jvm.JvmSynthetic
 
 /**
  * 可发送的或从服务器接收的消息.
@@ -137,6 +137,9 @@ public interface Message {
      *
      * 在使用消息相关 DSL 和扩展时, 一些内容比较的实现均使用的是 [contentToString] 而不是 [toString].
      *
+     * **注意: ** 即使 [toString] 输出的格式看起来像 [MiraiCode] 的表示, 但它们实际上是不同的.
+     * [toString] 会返回更随意的和更适合开发者阅读的信息, 通常不能被 [MiraiCode] 解析.
+     *
      * 各个消息类型的转换示例:
      * - [PlainText] : `"Hello"`
      * - [Image] : `"[mirai:image:{01E9451B-70ED-EAE3-B37C-101F1EEBF5B5}.mirai]"`
@@ -149,7 +152,9 @@ public interface Message {
     public override fun toString(): String
 
     /**
-     * 转为最接近官方格式的字符串. 如 `At(member) + "test"` 将转为 `"@群名片 test"`.
+     * 转为接近官方格式的字符串, 即 "内容". 如 `At(member) + "test"` 将转为 `"@QQ test"`.
+     *
+     * (对于 [At]，应使用 [At.getDisplay] 将其转为最接近官方格式的字符串 `"@群名片"`)
      *
      * 在使用消息相关 DSL 和扩展时, 一些内容比较的实现均使用 [contentToString] 而不是 [toString].
      *
@@ -163,6 +168,9 @@ public interface Message {
      * - [MessageChain] : 无间隔地连接所有元素 (`joinToString("", transformer=Message::contentToString)`)
      * - ...
      *
+     * **注意: ** 即使 [toString] 输出的格式看起来像 [MiraiCode] 的表示, 但它们实际上是不同的.
+     * [toString] 会返回更随意的和更适合开发者阅读的信息, 通常不能被 [MiraiCode] 解析.
+     *
      * @see toString 得到包含 mirai 消息元素代码的, 易读的字符串
      * @see contentEquals
      * @see Message.content Kotlin 扩展
@@ -172,13 +180,12 @@ public interface Message {
 
     /**
      * 判断内容是否与 [another] 相等即 `this` 与 [another] 的 [contentToString] 相等.
-     * [strict] 为 `true` 时, 还会额外判断每个消息元素的类型, 顺序和属性. 如 [Image] 会判断 [Image.imageId]
-     *
-     * **有关 [strict]:** 每个 [Image] 的 [contentToString] 都是 `"[图片]"`,
-     * 在 [strict] 为 `false` 时 [contentEquals] 会得到 `true`,
-     * 而为 `true` 时由于 [Image.imageId] 会被比较, 两张不同的图片的 [contentEquals] 会是 `false`.
      *
      * @param ignoreCase 为 `true` 时忽略大小写
+     * @param strict 为 `true` 时表示执行严格匹配, 即会额外判断每个消息元素的类型, 顺序和属性. 如 [Image] 会判断 [Image.imageId].
+     * 每个 [Image] 的[内容][contentToString]都是 `"[图片]"`,
+     * 进行非严格匹配时 [contentEquals] 会返回 `true`.
+     * 而为进行严格匹配时会额外比较 [Image.imageId], 两张不同的图片的 [contentEquals] 会返回 `false`.
      */
     public fun contentEquals(another: Message, ignoreCase: Boolean = false, strict: Boolean = false): Boolean {
         return if (strict) this.contentEqualsStrictImpl(another, ignoreCase)
@@ -198,7 +205,8 @@ public interface Message {
      *
      * @param ignoreCase 为 `true` 时忽略大小写
      */
-    @LowPriorityInOverloadResolution
+    @kotlin.internal.LowPriorityInOverloadResolution
+    @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
     public fun contentEquals(another: Message, ignoreCase: Boolean = false): Boolean =
         contentEquals(another, ignoreCase, false)
 
@@ -237,48 +245,113 @@ public interface Message {
      *
      * @see plus `+` 操作符重载
      */
-    @JvmSynthetic // in java they should use `plus` instead
-    public fun followedBy(tail: Message): MessageChain = followedByImpl(tail)
+    @JvmSynthetic // in Java they should use `plus` instead
+    public fun followedBy(tail: Message): MessageChain {
+        var constrainSingleCount = 0
+        if (this.hasConstrainSingle) constrainSingleCount++
+        if (tail.hasConstrainSingle) constrainSingleCount++
+        return if (constrainSingleCount == 0) {
+            // Future optimize:
+            // When constrainSingleCount == 1, see if we can connect by CombinedMessage,
+            // this need some kind of replacement of `hasConstrainSingle` with more information about MessageKeys.
+            @OptIn(MessageChainConstructor::class, MiraiInternalApi::class)
+            CombinedMessage(this, tail, false)
+        } else {
+            LinearMessageChainImpl.combineCreate(this, tail)
+        }
+    }
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: MessageChain): MessageChain = this + another as Message
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: Message): MessageChain = this.followedBy(another)
 
-    /** 将 [another] 连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: SingleMessage): MessageChain = this.followedBy(another)
 
-    /** 将 [another] 作为 [PlainText] 连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: String): MessageChain = this.followedBy(PlainText(another))
 
-    /** 将 [another] 作为 [PlainText] 连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: CharSequence): MessageChain =
         this.followedBy(PlainText(another.toString()))
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: Iterable<Message>): MessageChain =
         another.fold(this, Message::plus).toMessageChain()
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: Array<out Message>): MessageChain =
         another.fold(this, Message::plus).toMessageChain()
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     @JvmName("plusIterableString")
+    @Suppress("INAPPLICABLE_JVM_NAME")
     public operator fun plus(another: Iterable<String>): MessageChain =
         another.fold(this, Message::plus).toMessageChain()
 
-    /** 将 [another] 按顺序连接到这个消息的尾部. */
+    /**
+     * 创建一个[消息链][MessageChain], 将 [another] 连接到这个消息的尾部.
+     * 这不会改变本 [Message], 而是会创建新的 [MessageChain] 实例.
+     * 返回的 [MessageChain] 实例的第一个元素为本 [Message], 随后为按顺序的 [another] 中的元素.
+     */
     public operator fun plus(another: Sequence<Message>): MessageChain =
         another.fold(this, Message::plus).toMessageChain()
 
-    public companion object
+    /**
+     * @suppress 这是内部 API, 不要在任何情况下调用
+     * @since 2.12
+     */
+    @MiraiInternalApi
+    public fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R = visitor.visitMessage(this, data)
+
+    /**
+     * @suppress 这是内部 API, 不要在任何情况下调用
+     * @since 2.12
+     */
+    @MiraiInternalApi
+    public fun <D> acceptChildren(visitor: MessageVisitor<D, *>, data: D) {
+    }
+
+    public companion object // 用于"注册"扩展
 }
 
 /** 将 [another] 按顺序连接到这个消息的尾部. */
 @JvmSynthetic
-public suspend inline operator fun Message.plus(another: Flow<Message>): MessageChain =
+public suspend operator fun Message.plus(another: Flow<Message>): MessageChain =
     another.fold(this) { acc, it -> acc + it }.toMessageChain()
 
 
@@ -286,7 +359,7 @@ public suspend inline operator fun Message.plus(another: Flow<Message>): Message
  * [Message.contentToString] 的捷径
  */
 @get:JvmSynthetic
-public inline val Message.content: String
+public val Message.content: String
     get() = contentToString()
 
 /**
@@ -323,14 +396,13 @@ public fun Message.isContentBlank(): Boolean {
 /**
  * 将此消息元素按顺序重复 [count] 次.
  */
-// inline: for future removal
-public inline fun Message.repeat(count: Int): MessageChain {
+public fun Message.repeat(count: Int): MessageChain {
     if (this is ConstrainSingle) {
         // fast-path
         return this.toMessageChain()
     }
     return buildMessageChain(count) {
-        repeat(count) {
+        repeat(count) l@{
             add(this@repeat)
         }
     }
@@ -340,4 +412,4 @@ public inline fun Message.repeat(count: Int): MessageChain {
  * 将此消息元素按顺序重复 [count] 次.
  */
 @JvmSynthetic
-public inline operator fun Message.times(count: Int): MessageChain = this.repeat(count)
+public operator fun Message.times(count: Int): MessageChain = this.repeat(count)

@@ -1,29 +1,32 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 @file:JvmMultifileClass
 @file:JvmName("BotEventsKt")
 @file:Suppress("FunctionName", "unused", "DEPRECATION_ERROR")
+@file:OptIn(MiraiInternalApi::class)
 
 package net.mamoe.mirai.event.events
 
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.Friend
 import net.mamoe.mirai.contact.Group
 import net.mamoe.mirai.contact.User
 import net.mamoe.mirai.event.AbstractEvent
+import net.mamoe.mirai.event.BroadcastControllable
 import net.mamoe.mirai.internal.event.VerboseEvent
 import net.mamoe.mirai.internal.network.Packet
 import net.mamoe.mirai.utils.MiraiInternalApi
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
 
 
 /**
@@ -33,7 +36,10 @@ public data class FriendRemarkChangeEvent @MiraiInternalApi public constructor(
     public override val friend: Friend,
     public val oldRemark: String,
     public val newRemark: String,
-) : FriendEvent, Packet, AbstractEvent(), FriendInfoChangeEvent
+) : FriendEvent, Packet, AbstractEvent(), FriendInfoChangeEvent, BroadcastControllable {
+    override val shouldBroadcast: Boolean
+        get() = oldRemark != newRemark
+}
 
 /**
  * 成功添加了一个新好友的事件
@@ -55,7 +61,6 @@ public data class FriendDeleteEvent @MiraiInternalApi public constructor(
 /**
  * 一个账号请求添加机器人为好友的事件
  */
-@Suppress("DEPRECATION")
 public data class NewFriendRequestEvent @MiraiInternalApi public constructor(
     public override val bot: Bot,
     /**
@@ -79,9 +84,6 @@ public data class NewFriendRequestEvent @MiraiInternalApi public constructor(
      */
     public val fromNick: String,
 ) : BotEvent, Packet, AbstractEvent(), FriendInfoChangeEvent {
-    @JvmField
-    internal val responded: AtomicBoolean = AtomicBoolean(false)
-
     /**
      * @return 申请人来自的群. 当申请人来自其他途径申请时为 `null`
      */

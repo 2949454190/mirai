@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -24,11 +24,17 @@ internal object ExternalResourceLeakObserver : Runnable {
         MiraiLogger.Factory.create(ExternalResourceLeakObserver::class, "ExternalResourceLeakObserver")
     }
 
-    internal class ERReference(
-        resourceInternal: ExternalResourceInternal
-    ) : WeakReference<ExternalResource>(resourceInternal, queue) {
+    internal class ERReference : WeakReference<Any> {
+        constructor(resource: ExternalResourceInternal) : super(resource, queue) {
+            this.holder = resource.holder
+        }
+
+        constructor(resource: ExternalResource, holder: ExternalResourceHolder) : super(resource, queue) {
+            this.holder = holder
+        }
+
         @JvmField
-        internal val holder: ExternalResourceHolder = resourceInternal.holder
+        internal val holder: ExternalResourceHolder
     }
 
     class ExternalResourceCreateStackTrace : Throwable() {
@@ -42,6 +48,11 @@ internal object ExternalResourceLeakObserver : Runnable {
     fun register(resource: ExternalResource) {
         if (resource !is ExternalResourceInternal) return
         references.add(ERReference(resource))
+    }
+
+    @JvmStatic
+    fun register(resource: ExternalResource, holder: ExternalResourceHolder) {
+        references.add(ERReference(resource, holder))
     }
 
     init {

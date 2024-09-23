@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.components
@@ -13,17 +13,17 @@ import kotlinx.coroutines.*
 import net.mamoe.mirai.internal.network.component.ComponentKey
 import net.mamoe.mirai.internal.network.handler.NetworkHandler
 import net.mamoe.mirai.internal.network.protocol.packet.login.wtlogin.WtLogin15
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
 import net.mamoe.mirai.network.LoginFailedException
 import net.mamoe.mirai.utils.MiraiLogger
 import net.mamoe.mirai.utils.info
 import net.mamoe.mirai.utils.millisToHumanReadableString
 import net.mamoe.mirai.utils.minutesToMillis
+import kotlin.coroutines.cancellation.CancellationException
 
 internal interface KeyRefreshProcessor {
     suspend fun keyRefreshLoop(handler: NetworkHandler)
 
-    @Throws(LoginFailedException::class)
+    @Throws(LoginFailedException::class, CancellationException::class)
     suspend fun refreshKeysNow(handler: NetworkHandler)
 
     companion object : ComponentKey<KeyRefreshProcessor>
@@ -66,6 +66,9 @@ internal class KeyRefreshProcessorImpl(
     }
 
     override suspend fun refreshKeysNow(handler: NetworkHandler) {
-        WtLogin15(handler.context[SsoProcessor].client).sendAndExpect(handler)
+        handler.sendAndExpect(WtLogin15(handler.context[SsoProcessor].client))
+        handler.context[SsoProcessor].client.bot.apply {
+            components[AccountSecretsManager].saveSecrets(account, AccountSecretsImpl(client))
+        }
     }
 }

@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 @file:JvmMultifileClass
@@ -13,20 +13,26 @@
     "FunctionName", "INVISIBLE_REFERENCE", "INVISIBLE_MEMBER", "DEPRECATION_ERROR",
     "MemberVisibilityCanBePrivate"
 )
+@file:OptIn(MiraiInternalApi::class)
 
 package net.mamoe.mirai.event.events
 
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.*
+import net.mamoe.mirai.contact.announcement.Announcements
 import net.mamoe.mirai.data.GroupHonorType
 import net.mamoe.mirai.event.AbstractEvent
 import net.mamoe.mirai.event.BroadcastControllable
 import net.mamoe.mirai.internal.network.Packet
+import net.mamoe.mirai.utils.DeprecatedSinceMirai
 import net.mamoe.mirai.utils.MiraiExperimentalApi
 import net.mamoe.mirai.utils.MiraiInternalApi
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
+import kotlin.jvm.JvmOverloads
+import kotlin.jvm.JvmStatic
 
 /**
  * 机器人被踢出群或在其他客户端主动退出一个群. 在事件广播前 [Bot.groups] 就已删除这个群.
@@ -185,7 +191,13 @@ public data class GroupNameChangeEvent @MiraiInternalApi constructor(
 
 /**
  * 入群公告改变. 此事件广播前修改就已经完成.
+ *
+ * ## 已弃用
+ *
+ * 本事件不会再被触发. 无替代方法获知入群公告改变事件. 可使用 [Announcements] 主动获取所有公告列表.
  */
+@DeprecatedSinceMirai(warningSince = "2.12", errorSince = "2.14")
+@Deprecated("This event is not being triggered anymore.", level = DeprecationLevel.ERROR)
 public data class GroupEntranceAnnouncementChangeEvent @MiraiInternalApi constructor(
     public override val origin: String,
     public override val new: String,
@@ -326,7 +338,6 @@ public sealed class MemberLeaveEvent : GroupMemberEvent, AbstractEvent(), GroupM
 /**
  * [Bot] 被邀请加入一个群.
  */
-@Suppress("DEPRECATION")
 public data class BotInvitedJoinGroupRequestEvent @MiraiInternalApi constructor(
     public override val bot: Bot,
     /**
@@ -349,9 +360,6 @@ public data class BotInvitedJoinGroupRequestEvent @MiraiInternalApi constructor(
      */
     public val invitor: Friend? get() = this.bot.getFriend(invitorId)
 
-    @JvmField
-    internal val responded: AtomicBoolean = AtomicBoolean(false)
-
     @JvmBlockingBridge
     public suspend fun accept(): Unit = Mirai.acceptInvitedJoinGroupRequest(this)
 
@@ -362,7 +370,6 @@ public data class BotInvitedJoinGroupRequestEvent @MiraiInternalApi constructor(
 /**
  * 一个账号请求加入群事件, [Bot] 在此群中是管理员或群主.
  */
-@Suppress("DEPRECATION")
 public data class MemberJoinRequestEvent @MiraiInternalApi constructor(
     override val bot: Bot,
     /**
@@ -397,10 +404,6 @@ public data class MemberJoinRequestEvent @MiraiInternalApi constructor(
      * 邀请入群的成员. 若在事件发生时机器人或该成员退群, [invitor] 为 `null`.
      */
     public val invitor: NormalMember? by lazy { invitorId?.let { group?.get(it) } }
-
-    @JvmField
-    @PublishedApi
-    internal val responded: AtomicBoolean = AtomicBoolean(false)
 
     /**
      * 同意这个请求
@@ -442,7 +445,7 @@ public data class MemberJoinRequestEvent @MiraiInternalApi constructor(
         @Deprecated("For binary compatibility", level = DeprecationLevel.HIDDEN)
         @JvmStatic
         @JvmName("copy\$default") // avoid being mangled
-        fun `copy$default`(
+        fun copy_default(
             var0: MemberJoinRequestEvent, var1: Bot, var2: Long, var4: String, var5: Long, var7: Long,
             var9: String, var10: String, var11: Int, @Suppress("UNUSED_PARAMETER") var12: Any
         ): MemberJoinRequestEvent {
@@ -579,14 +582,18 @@ public sealed class MemberHonorChangeEvent : GroupMemberEvent, BotPassiveEvent, 
     /**
      * 改变的荣誉类型
      */
-    public abstract val honorType: GroupHonorType
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @get:JvmName("getHonorType")
+    public abstract val honorType: GroupHonorType // `public int getHonorType()` on Java's point of view
 
     /**
      * 获得荣誉时的事件
      */
-    public data class Achieve(override val member: NormalMember, override val honorType: GroupHonorType) :
-        MemberHonorChangeEvent() {
-
+    public data class Achieve(
+        override val member: NormalMember,
+        @get:JvmName("getHonorType")
+        override val honorType: GroupHonorType
+    ) : MemberHonorChangeEvent() {
         override fun toString(): String {
             return "MemberHonorChangeEvent.Achieve(member=$member, honorType=$honorType)"
         }
@@ -595,9 +602,11 @@ public sealed class MemberHonorChangeEvent : GroupMemberEvent, BotPassiveEvent, 
     /**
      * 失去荣誉时的事件
      */
-    public data class Lose(override val member: NormalMember, override val honorType: GroupHonorType) :
-        MemberHonorChangeEvent() {
-
+    public data class Lose(
+        override val member: NormalMember,
+        @get:JvmName("getHonorType")
+        override val honorType: GroupHonorType
+    ) : MemberHonorChangeEvent() {
         override fun toString(): String {
             return "MemberHonorChangeEvent.Lose(member=$member, honorType=$honorType)"
         }

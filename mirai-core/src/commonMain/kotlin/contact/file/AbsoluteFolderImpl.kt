@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,8 +9,8 @@
 
 package net.mamoe.mirai.internal.contact.file
 
+import io.ktor.utils.io.core.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.runBlocking
 import net.mamoe.mirai.contact.FileSupported
 import net.mamoe.mirai.contact.file.AbsoluteFile
 import net.mamoe.mirai.contact.file.AbsoluteFileFolder
@@ -18,7 +18,7 @@ import net.mamoe.mirai.contact.file.AbsoluteFolder
 import net.mamoe.mirai.contact.isOperator
 import net.mamoe.mirai.internal.contact.GroupImpl
 import net.mamoe.mirai.internal.contact.file.RemoteFilesImpl.Companion.findFileByPath
-import net.mamoe.mirai.internal.message.MiraiInternalMessageFlag
+import net.mamoe.mirai.internal.message.flags.AllowSendFileMessage
 import net.mamoe.mirai.internal.network.QQAndroidClient
 import net.mamoe.mirai.internal.network.components.ClockHolder.Companion.clock
 import net.mamoe.mirai.internal.network.highway.Highway
@@ -27,14 +27,11 @@ import net.mamoe.mirai.internal.network.protocol
 import net.mamoe.mirai.internal.network.protocol.data.proto.*
 import net.mamoe.mirai.internal.network.protocol.packet.chat.FileManagement
 import net.mamoe.mirai.internal.network.protocol.packet.chat.toResult
-import net.mamoe.mirai.internal.network.protocol.packet.sendAndExpect
 import net.mamoe.mirai.internal.utils.FileSystem
 import net.mamoe.mirai.internal.utils.io.serialization.toByteArray
 import net.mamoe.mirai.utils.*
-import java.util.stream.Stream
-import kotlin.streams.asStream
 
-internal fun Oidb0x6d8.GetFileListRspBody.Item.resolved(parent: AbsoluteFolderImpl): AbsoluteFileFolder? {
+internal fun Oidb0x6d8.GetFileListRspBody.Item.resolved(parent: CommonAbsoluteFolderImpl): AbsoluteFileFolder? {
     val item = this
     return when {
         item.fileInfo != null -> {
@@ -47,7 +44,7 @@ internal fun Oidb0x6d8.GetFileListRspBody.Item.resolved(parent: AbsoluteFolderIm
     }
 }
 
-internal fun AbsoluteFolderImpl.createChildFolder(
+internal fun CommonAbsoluteFolderImpl.createChildFolder(
     folderInfo: GroupFileCommon.FolderInfo
 ): AbsoluteFolderImpl = AbsoluteFolderImpl(
     contact = contact,
@@ -60,7 +57,7 @@ internal fun AbsoluteFolderImpl.createChildFolder(
     contentsCount = folderInfo.totalFileCount
 )
 
-internal fun AbsoluteFolderImpl.createChildFile(
+internal fun CommonAbsoluteFolderImpl.createChildFile(
     info: GroupFileCommon.FileInfo
 ): AbsoluteFileImpl = AbsoluteFileImpl(
     contact = contact,
@@ -77,7 +74,13 @@ internal fun AbsoluteFolderImpl.createChildFile(
     busId = info.busId
 )
 
-internal class AbsoluteFolderImpl(
+internal expect class AbsoluteFolderImpl(
+    contact: FileSupported, parent: AbsoluteFolder?, id: String, name: String,
+    uploadTime: Long, uploaderId: Long, lastModifiedTime: Long,
+    contentsCount: Int,
+) : CommonAbsoluteFolderImpl
+
+internal abstract class CommonAbsoluteFolderImpl(
     contact: FileSupported, parent: AbsoluteFolder?, id: String, name: String,
     uploadTime: Long, uploaderId: Long, lastModifiedTime: Long,
     override var contentsCount: Int,
@@ -113,12 +116,15 @@ internal class AbsoluteFolderImpl(
             return flow {
                 var index = 0
                 while (true) {
-                    val list = FileManagement.GetFileList(
-                        client,
-                        groupCode = contact.id,
-                        folderId = folderId,
-                        startIndex = index
-                    ).sendAndExpect(client.bot).toResult("AbsoluteFolderImpl.getFilesFlow").getOrThrow()
+                    val list =
+                        client.bot.network.sendAndExpect(
+                            FileManagement.GetFileList(
+                                client,
+                                groupCode = contact.id,
+                                folderId = folderId,
+                                startIndex = index
+                            )
+                        ).toResult("AbsoluteFolderImpl.getFilesFlow").getOrThrow()
                     index += list.itemList.size
 
                     if (list.int32RetCode != 0) return@flow
@@ -139,13 +145,16 @@ internal class AbsoluteFolderImpl(
             // TODO: 12/10/2021 checkPermission for AbsoluteFolderImpl.upload
 
             content.withAutoClose {
-                val resp = FileManagement.RequestUpload(
-                    folder.client,
-                    groupCode = folder.contact.id,
-                    folderId = folder.id,
-                    resource = content,
-                    filename = filepath
-                ).sendAndExpect(folder.bot).toResult("AbsoluteFolderImpl.upload").getOrThrow()
+                val resp =
+                    folder.bot.network.sendAndExpect(
+                        FileManagement.RequestUpload(
+                            folder.client,
+                            groupCode = folder.contact.id,
+                            folderId = folder.id,
+                            resource = content,
+                            filename = filepath
+                        )
+                    ).toResult("AbsoluteFolderImpl.upload").getOrThrow()
 
                 when (resp.int32RetCode) {
                     -36 -> folder.throwPermissionDeniedException("uploadNewFile")
@@ -172,7 +181,7 @@ internal class AbsoluteFolderImpl(
                     //      当为 true 时跳过上传, 但仍然需要完成 `sendMessage(FileMessage)` 才是正常逻辑
                     callback?.onBegin(file, content)
                     val result = kotlin.runCatching {
-                        folder.contact.sendMessage(file.toMessage() + MiraiInternalMessageFlag)
+                        folder.contact.sendMessage(AllowSendFileMessage + file.toMessage())
                     }.map { content.size }
                     callback?.onFinished(file, content, result)
                     return file
@@ -236,7 +245,7 @@ internal class AbsoluteFolderImpl(
                     )
                 }.let { result0 ->
                     val result = result0.onSuccessCatching {
-                        folder.contact.sendMessage(file.toMessage() + MiraiInternalMessageFlag)
+                        folder.contact.sendMessage(AllowSendFileMessage + file.toMessage())
                     }
                     callback?.onFinished(file, content, result.map { content.size })
                 }
@@ -248,56 +257,19 @@ internal class AbsoluteFolderImpl(
 
     suspend fun getItemsFlow(): Flow<Oidb0x6d8.GetFileListRspBody.Item> = Companion.getItemsFlow(client, contact, id)
 
-    @JavaFriendlyAPI
-    private suspend fun getItemsSequence(): Sequence<Oidb0x6d8.GetFileListRspBody.Item> {
-        return sequence {
-            var index = 0
-            while (true) {
-                val list = runBlocking {
-                    FileManagement.GetFileList(
-                        client,
-                        groupCode = contact.id,
-                        folderId = id,
-                        startIndex = index
-                    ).sendAndExpect(bot)
-                }.toResult("AbsoluteFolderImpl.getFilesFlow").getOrThrow()
-                index += list.itemList.size
-
-                if (list.int32RetCode != 0) return@sequence
-                if (list.itemList.isEmpty()) return@sequence
-
-                yieldAll(list.itemList)
-            }
-        }
-    }
-
-    private fun Oidb0x6d8.GetFileListRspBody.Item.resolve(): AbsoluteFileFolder? = resolved(this@AbsoluteFolderImpl)
+    protected fun Oidb0x6d8.GetFileListRspBody.Item.resolve(): AbsoluteFileFolder? =
+        resolved(this@CommonAbsoluteFolderImpl)
 
     override suspend fun folders(): Flow<AbsoluteFolder> {
         return getItemsFlow().filter { it.folderInfo != null }.map { it.resolve() as AbsoluteFolder }
-    }
-
-    @JavaFriendlyAPI
-    override suspend fun foldersStream(): Stream<AbsoluteFolder> {
-        return getItemsSequence().filter { it.folderInfo != null }.map { it.resolve() as AbsoluteFolder }.asStream()
     }
 
     override suspend fun files(): Flow<AbsoluteFile> {
         return getItemsFlow().filter { it.fileInfo != null }.map { it.resolve() as AbsoluteFile }
     }
 
-    @JavaFriendlyAPI
-    override suspend fun filesStream(): Stream<AbsoluteFile> {
-        return getItemsSequence().filter { it.fileInfo != null }.map { it.resolve() as AbsoluteFile }.asStream()
-    }
-
     override suspend fun children(): Flow<AbsoluteFileFolder> {
         return getItemsFlow().mapNotNull { it.resolve() }
-    }
-
-    @JavaFriendlyAPI
-    override suspend fun childrenStream(): Stream<AbsoluteFileFolder> {
-        return getItemsSequence().mapNotNull { it.resolve() }.asStream()
     }
 
     override suspend fun createFolder(name: String): AbsoluteFolder {
@@ -307,8 +279,8 @@ internal class AbsoluteFolderImpl(
 
         // server only support nesting depth level of 1 so we don't need to check the name
 
-        val result = FileManagement.CreateFolder(client, contact.id, this.id, name)
-            .sendAndExpect(bot).toResult("AbsoluteFolderImpl.mkdir", checkResp = false)
+        val result = bot.network.sendAndExpect(FileManagement.CreateFolder(client, contact.id, this.id, name))
+            .toResult("AbsoluteFolderImpl.mkdir", checkResp = false)
             .getOrThrow() // throw protocol errors
 
         /*
@@ -363,7 +335,23 @@ internal class AbsoluteFolderImpl(
     override suspend fun resolveFolder(name: String): AbsoluteFolder? {
         if (name.isBlank()) throw IllegalArgumentException("folder name cannot be blank.")
         if (!FileSystem.isLegal(name)) return null
+        if (name[0] == '/') {
+            return root.resolveFolder(name.substring(1))
+        }
         return getItemsFlow().firstOrNull { it.folderInfo?.folderName == name }?.resolve() as AbsoluteFolder?
+    }
+
+    override suspend fun resolveFolderById(id: String): AbsoluteFolder? {
+        if (name.isBlank()) throw IllegalArgumentException("folder id cannot be blank.")
+        if (!FileSystem.isLegal(id)) return null
+        if (id == AbsoluteFolder.ROOT_FOLDER_ID) return root // special case, not ambiguous — '/' always refers to root.
+        if (this.id != AbsoluteFolder.ROOT_FOLDER_ID) return null // reserved for future
+
+        // All folder ids start with '/'.
+        // Currently, only root folders can have children folders,
+        // and we don't know how the folderIds can be changed,
+        // so we force the receiver to be root for now, to provide forward-compatibility.
+        return root.impl().getItemsFlow().firstOrNull { it.folderInfo?.folderId == id }?.resolve() as AbsoluteFolder?
     }
 
     override suspend fun resolveFileById(id: String, deep: Boolean): AbsoluteFile? {
@@ -373,12 +361,16 @@ internal class AbsoluteFolderImpl(
 
         if (!deep) return null
 
-        return folders().map { it.resolveFileById(id, deep) }.firstOrNull()
+        return folders().map { it.resolveFileById(id, deep) }.firstOrNull { it != null }
     }
 
     override suspend fun resolveFiles(path: String): Flow<AbsoluteFile> {
         if (path.isBlank()) throw IllegalArgumentException("path cannot be blank.")
         if (!FileSystem.isLegal(path)) return emptyFlow()
+
+        if (path[0] == '/') {
+            return root.resolveFiles(path.substring(1))
+        }
 
         if (!path.contains('/')) {
             return getItemsFlow().filter { it.fileInfo?.fileName == path }.map { it.resolve() as AbsoluteFile }
@@ -387,38 +379,17 @@ internal class AbsoluteFolderImpl(
         return resolveFolder(path.substringBefore('/'))?.resolveFiles(path.substringAfter('/')) ?: emptyFlow()
     }
 
-    @OptIn(JavaFriendlyAPI::class)
-    override suspend fun resolveFilesStream(path: String): Stream<AbsoluteFile> {
-        if (path.isBlank()) throw IllegalArgumentException("path cannot be blank.")
-        if (!FileSystem.isLegal(path)) return Stream.empty()
-
-        if (!path.contains('/')) {
-            return getItemsSequence().filter { it.fileInfo?.fileName == path }.map { it.resolve() as AbsoluteFile }
-                .asStream()
-        }
-
-        return resolveFolder(path.substringBefore('/'))?.resolveFilesStream(path.substringAfter('/')) ?: Stream.empty()
-    }
-
     override suspend fun resolveAll(path: String): Flow<AbsoluteFileFolder> {
         if (path.isBlank()) throw IllegalArgumentException("path cannot be blank.")
         if (!FileSystem.isLegal(path)) return emptyFlow()
+        if (path[0] == '/') {
+            return root.resolveAll(path.substring(1))
+        }
         if (!path.contains('/')) {
             return getItemsFlow().mapNotNull { it.resolve() }
         }
 
         return resolveFolder(path.substringBefore('/'))?.resolveAll(path.substringAfter('/')) ?: emptyFlow()
-    }
-
-    @JavaFriendlyAPI
-    override suspend fun resolveAllStream(path: String): Stream<AbsoluteFileFolder> {
-        if (path.isBlank()) throw IllegalArgumentException("path cannot be blank.")
-        if (!FileSystem.isLegal(path)) return Stream.empty()
-        if (!path.contains('/')) {
-            return getItemsSequence().mapNotNull { it.resolve() }.asStream()
-        }
-
-        return resolveFolder(path.substringBefore('/'))?.resolveAllStream(path.substringAfter('/')) ?: Stream.empty()
     }
 
     override suspend fun uploadNewFile(
@@ -448,10 +419,8 @@ internal class AbsoluteFolderImpl(
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
+        if (!isSameType(this, other)) return false
         if (!super.equals(other)) return false
-
-        other as AbsoluteFolderImpl
 
         if (contentsCount != other.contentsCount) return false
 

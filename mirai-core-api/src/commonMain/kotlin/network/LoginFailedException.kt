@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -12,7 +12,8 @@
 package net.mamoe.mirai.network
 
 import net.mamoe.mirai.Bot
-import net.mamoe.mirai.utils.MiraiExperimentalApi
+import net.mamoe.mirai.auth.BotAuthorization
+import net.mamoe.mirai.utils.LoginSolver
 import net.mamoe.mirai.utils.MiraiInternalApi
 
 
@@ -27,6 +28,8 @@ public sealed class LoginFailedException(
     message: String? = null,
     cause: Throwable? = null
 ) : RuntimeException(message, cause)
+// 实现提示 (仅供网络层实现者参考): `LoginFailedException` 会被包装为 `NetworkException` (`LoginFailedExceptionAsNetworkException`),
+// 并在 `bot.login` 时 unwrap.
 
 /**
  * 密码输入错误 (有时候也会是其他错误, 如 `"当前上网环境异常，请更换网络环境或在常用设备上登录或稍后再试。"`)
@@ -34,6 +37,21 @@ public sealed class LoginFailedException(
 public class WrongPasswordException @MiraiInternalApi constructor(
     message: String?
 ) : LoginFailedException(true, message)
+
+/**
+ * 二维码扫码账号与 BOT 账号不一致。
+ *
+ * @since 2.15
+ */
+public class InconsistentBotIdException @MiraiInternalApi constructor(
+    public val expected: Long,
+    public val actual: Long,
+    message: String? = null
+) : LoginFailedException(
+    true,
+    message
+        ?: "trying to logging in a bot whose id is different from the one provided to BotFactory.newBot, expected=$expected, actual=$actual."
+)
 
 /**
  * 无可用服务器
@@ -45,8 +63,11 @@ public class NoServerAvailableException @MiraiInternalApi constructor(
 /**
  * 服务器要求稍后重试
  */
-public class RetryLaterException @MiraiInternalApi constructor() :
-    LoginFailedException(false, "server requests retrial later")
+public class RetryLaterException @MiraiInternalApi constructor(
+    message: String?,
+    cause: Throwable? = null,
+    killBot: Boolean = false
+) : LoginFailedException(killBot, message, cause)
 
 /**
  * 无标准输入或 Kotlin 不支持此输入.
@@ -56,15 +77,47 @@ public class NoStandardInputForCaptchaException @MiraiInternalApi constructor(
 ) : LoginFailedException(true, "no standard input for captcha")
 
 /**
- * 需要短信验证时抛出. mirai 目前还不支持短信验证.
+ * 表示在登录过程中, [BotAuthorization] 抛出的异常.
+ * @since 2.15
  */
-@MiraiExperimentalApi("Will be removed when SMS login is supported")
-public class UnsupportedSMSLoginException(message: String?) : LoginFailedException(true, message)
+public class BotAuthorizationException @MiraiInternalApi constructor(
+    public val authorization: BotAuthorization,
+    cause: Throwable?,
+) : LoginFailedException(
+    killBot = true,
+    "BotAuthorization(${authorization}) threw an exception during authorization process. See cause below.",
+    cause
+)
+
+/**
+ * 当前 [LoginSolver] 不支持此验证方式
+ *
+ * @since 2.15
+ */
+public open class UnsupportedCaptchaMethodException : LoginFailedException {
+    public constructor(killBot: Boolean) : super(killBot)
+    public constructor(killBot: Boolean, message: String?) : super(killBot, message)
+    public constructor(killBot: Boolean, message: String?, cause: Throwable?) : super(killBot, message, cause)
+    public constructor(killBot: Boolean, cause: Throwable?) : super(killBot, cause = cause)
+}
+
+/**
+ * 需要强制短信验证, 且当前 [LoginSolver] 不支持时抛出.
+ * @since 2.13
+ */
+public class UnsupportedSmsLoginException(message: String?) : UnsupportedCaptchaMethodException(true, message)
 
 /**
  * 无法完成滑块验证
  */
-public class UnsupportedSliderCaptchaException(message: String?) : LoginFailedException(true, message)
+public class UnsupportedSliderCaptchaException(message: String?) : UnsupportedCaptchaMethodException(true, message)
+
+/**
+ * 需要二维码登录, 且当前 [LoginSolver] 不支持时抛出
+ *
+ * @since 2.15
+ */
+public class UnsupportedQRCodeCaptchaException(message: String?) : UnsupportedCaptchaMethodException(true, message)
 
 /**
  * 非 mirai 实现的异常

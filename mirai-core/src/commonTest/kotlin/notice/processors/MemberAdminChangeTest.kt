@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -7,15 +7,14 @@
  * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:JvmBlockingBridge
-
 package net.mamoe.mirai.internal.notice.processors
 
-import net.mamoe.kjbb.JvmBlockingBridge
 import net.mamoe.mirai.contact.MemberPermission
 import net.mamoe.mirai.event.events.BotGroupPermissionChangeEvent
 import net.mamoe.mirai.event.events.MemberPermissionChangeEvent
-import org.junit.jupiter.api.Test
+import net.mamoe.mirai.internal.network.protocol.data.proto.OnlinePushTrans
+import net.mamoe.mirai.internal.test.runBlockingUnit
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -26,9 +25,9 @@ import kotlin.test.assertIs
 internal class MemberAdminChangeTest : AbstractNoticeProcessorTest() {
 
     @Test
-    suspend fun `bot member to admin`() {
+    fun `bot member to admin`() = runBlockingUnit {
         suspend fun runTest() = use {
-            net.mamoe.mirai.internal.network.protocol.data.proto.OnlinePushTrans.PbMsgInfo(
+            OnlinePushTrans.PbMsgInfo(
                 fromUin = 2230203,
                 toUin = 1230003,
                 msgType = 44,
@@ -74,7 +73,7 @@ internal class MemberAdminChangeTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `bot admin to member`() {
+    fun `bot admin to member`() = runBlockingUnit {
         suspend fun runTest() = use {
             net.mamoe.mirai.internal.network.protocol.data.proto.OnlinePushTrans.PbMsgInfo(
                 fromUin = 2230203,
@@ -119,7 +118,7 @@ internal class MemberAdminChangeTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `member member to admin`() {
+    fun `member member to admin`() = runBlockingUnit {
         suspend fun runTest() = use {
             net.mamoe.mirai.internal.network.protocol.data.proto.OnlinePushTrans.PbMsgInfo(
                 fromUin = 2230203,
@@ -168,7 +167,7 @@ internal class MemberAdminChangeTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `member admin to member`() {
+    fun `member admin to member`() = runBlockingUnit {
         suspend fun runTest() = use {
             net.mamoe.mirai.internal.network.protocol.data.proto.OnlinePushTrans.PbMsgInfo(
                 fromUin = 2230203,

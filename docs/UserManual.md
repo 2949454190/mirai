@@ -1,118 +1,60 @@
 # Mirai - UserManual
 
-Mirai 用户手册。本文面向对开发不熟悉而希望使用 Mirai 的用户。如果你要开发，请先阅读 [开发文档](README.md)。
+这里是 Mirai 用户手册。本文面向对开发并不熟悉，但希望使用 Mirai 提供的 QQ 机器人服务支持的用户。
+如果你要开发 Mirai 插件或参与贡献 Mirai 项目，请先阅读 [开发文档](README.md)。  
 
 ## 启动 Mirai
 
-使用 Mirai，一般人要启动的是 Mirai 控制台（即 Mirai Console），它可以加载插件。
+想要部署并使用 Mirai QQ机器人框架，只需要启动 Mirai 控制台（即 Mirai Console），
+它自带一些基础功能，也可以加载社区提供的插件。
 
-Mirai 控制台现在有两个版本，插件在这两个版本的 Mirai Console 上都可以运行:
+Mirai 控制台现在有两个版本，Mirai 插件在这两个版本的 Mirai Console 上都可以运行:
 
 [MCLI-1.png]: .UserManual_images/MCLI-1.png
+
 [MCPS-1.png]: .UserManual_images/MCPS-1.png
 
-| 类型    | 长啥样?       | 好用吗?          | 怎么装?                          |
-|:-------|:-------------|:----------------|:-------------------------------|
+| 类型   | 长啥样?         | 好用吗?      | 怎么装?                  |
+|:-----|:-------------|:----------|:----------------------|
 | 纯控制台 | [MCLI-1.png] | 稳定，也适合服务器 | [使用纯控制台版本](#使用纯控制台版本) |
-| 图形界面 | [MCPS-1.png] | 测试版，不稳定    | [使用图形界面版本](#使用图形界面版本) |
-
-## 使用图形界面版本
-
-前往 [sonder-joker/mirai-compose](https://github.com/sonder-joker/mirai-compose/releases) 下载适合你的系统的压缩包，解压到一个文件就可以使用。
+| 图形界面 | [MCPS-1.png] | 测试版，不推荐使用 | [使用图形界面版本](#使用图形界面版本) |
 
 ## 使用纯控制台版本
 
-### 安装
+详细教程请查看 [ConsoleTerminal.md](ConsoleTerminal.md)。
 
-可以使用[脚本](https://mirai.mamoe.net/assets/uploads/files/1618372079496-install-20210412.cmd) 自动安装 32 位带 HTTP 插件的版本，也可以使用安装器个性化安装：
+以 Windows 系统为例，以下为简要安装步骤：  
 
-1. 访问 [iTXTech/mcl-installer](https://github.com/iTXTech/mcl-installer/releases)；
-2. 下载适合你的系统的可执行文件；
-3. 在一个新文件夹存放这个文件，运行它；
-4. 通常可以一路回车使用默认设置完成安装，安装完成后程序自动退出；
-5. 运行 `mcl.cmd` 启动，成功后会看到绿色的 `mirai-console started successfully`。
+1. 前往 [iTXTech/mcl-installer](https://github.com/iTXTech/mcl-installer/releases) 下载适合您系统的最新版本的 MCL 安装器
+2. 创建好文件夹之后，将 MCL 安装器移动到其中
+3. 双击 `mcl-installer.exe` 过程中只需要按几次回车键，即可安装完毕
+4. 运行 `mcl.cmd` 即可启动 MCL 控制台
 
-### 了解运行环境
+安装插件只需要将下载好的插件置于 plugins 目录，然后重启 MCL 控制台即可。  
 
-安装时自动下载了 Mirai Console 启动器（简称 [MCL](https://github.com/iTXTech/mirai-console-loader)）。
+## ~~使用图形界面版本~~
 
-启动器会帮你准备运行环境，下载和更新 Mirai 核心。你也可以使用启动器下载一些插件（见下文）。
+开发者已停止更新，且有许多历史问题，故不推荐使用  
+前往 [sonder-joker/mirai-compose](https://github.com/sonder-joker/mirai-compose/releases)
+下载适合你的系统的压缩包，
+>  MAC 系统下载 .dmg 后缀的文件  
+>  Windows 系统下载 .msi 后缀的文件  
+>  Linux 系统下载 .deb 后缀的文件
 
-第一次运行 `mcl.cmd` 时会初始化运行环境。下表说明了各个文件夹的用途。
+以 Windows 系统为例，以下为简要安装步骤：
 
-| 文件夹名称  | 用途                           |
-|:---------:|:------------------------------|
-| `scripts` | 存放启动器的脚本，一般不需要在意他们 |
-| `plugins` | 存放插件                       |
-|  `data`   | 存放插件的数据，一般不需要在意它们   |
-| `config`  | 存放插件的配置，可以打开并修改配置   |
-|  `logs`   | 存放运行时的日志，日志默认保留 7 天 |
+1. 下载 `mirai-compose-<版本>.msi`
+2. 双击运行安装程序，选择一个合适的文件夹，然后点击安装
+3. 安装完毕后打开刚才指定的文件夹
+4. 双击启动其中的 `mirai-compose.exe` 即可开始运行
+5. 运行后点击左上角可以添加 QQ bot 账号
 
-> 可以在[这里](https://github.com/iTXTech/mirai-console-loader)查看 MCL 详细用法
-
-### 下载和安装插件
-
-刚刚装好的 Mirai Console 是没有任何功能的。功能将由插件提供。
-
-#### 如何安装官方插件
-
-Mirai 官方提供两个插件：
-
-- [chat-command](https://github.com/project-mirai/chat-command): 允许在聊天环境通过以 "/" 起始的消息执行指令
-- [mirai-api-http](https://github.com/project-mirai/mirai-api-http)：提供 HTTP 支持，允许使用其他编程语言的插件
-
-打开命令行 (Windows 系统按住Shift+鼠标右键，点击"在此处打开 PowerShell"),  
-可以使用 MCL 自动安装这些插件如：
-
-```
-./mcl --update-package net.mamoe:mirai-api-http --type plugin --channel stable
-```
-
-详细文档：[MCL/scripts](https://github.com/iTXTech/mirai-console-loader/blob/master/scripts/README.md)
-
-#### 在哪找社区插件
-
-- Mirai 官方论坛 [Mirai Forum](https://mirai.mamoe.net/category/11/%E6%8F%92%E4%BB%B6%E5%8F%91%E5%B8%83)
-
-> *我们还正在建设插件中心，完成后将会简化寻找插件的工作*
-
-#### 如何安装社区插件
-
-如果是 JAR 文件的插件，放入 `plugins` 即可。其他插件一般都有特殊说明如何使用，请参考它们的说明。
-
-#### 推荐安装的插件
-
-- [chat-command](https://github.com/project-mirai/chat-command): 不安装此环境不能在聊天环境中执行命令
-- [LuckPerms-Mirai](https://github.com/Karlatemp/LuckPerms-Mirai) (*社区*): 易用的高级高效率权限组插件, 适合权限分配模型比较复杂的情况
-- [mirai-api-http](https://github.com/project-mirai/mirai-api-http)：提供 HTTP 支持，允许使用其他编程语言的插件
-
-### 使用控制台指令
-
-启动 `mcl.cmd` 就会看到控制台。在控制台可以输入指令，按回车执行这条指令。
-
-Mirai Console 内置一些指令，输入 `?` 并回车可以查看指令列表。
-
-一些常用指令介绍在[这里](https://github.com/mamoe/mirai-console/blob/master/docs/BuiltInCommands.md#mirai-console---builtin-commands)。
-
-#### 在群聊中使用命令 (权限授予)
-
-要允许从 QQ 聊天环境中使用各种命令, 你 **必须** 完成以下的配置
-
-1. 安装 [chat-command](https://github.com/project-mirai/chat-command)
-2. 完成命令执行权限授予
-
-> 关于不同的权限系统, 授予权限的方式, 或者授予权限的命令格式, 可能有所不一样
->
-> 当使用 `非内置权限系统` 时, 具体的权限管理相关命令以相关的权限系统的文档为准
-> > 如 `LuckPerms-Mirai` 的权限管理命令为 `/lp` 而不是 `/permission`
-
-要完成权限授予, 你必须通过在控制台执行
-[`/permission permit [target] [permission]`](https://github.com/mamoe/mirai-console/blob/master/docs/BuiltInCommands.md#permissioncommand)
-来授予其他人执行相关命令的权限, 需要执行的权限一般情况在插件的介绍页都会给明
-
-`@see` [`PermissionCommand`](https://github.com/mamoe/mirai-console/blob/master/docs/BuiltInCommands.md#permissioncommand)
+安装插件只需要将下载好的插件置于 plugins 目录，安装完毕后重启 mirai-compose 以生效。
 
 ## 解决问题
 
-如果遇到使用问题或想提建议，可以在 [issues](https://github.com/mamoe/mirai/issues) 发表。也可以在[论坛](https://mirai.mamoe.net/)交流想法。
+请先阅读 [常见问题](Questions.md)  。
+
+如果遇到使用问题或想提建议，可以在 [issues](https://github.com/mamoe/mirai/issues)
+发表。也可以在[论坛](https://mirai.mamoe.net/)交流想法。
 

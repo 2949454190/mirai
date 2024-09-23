@@ -21,6 +21,7 @@
   - [处理滑动验证码](#处理滑动验证码)
   - [常见登录失败原因](#常见登录失败原因)
 - [附录: 调试网络层](#附录-调试网络层)
+- [附录: 模拟测试框架](#附录-模拟测试框架)
 
 ## 1. 创建和配置 `Bot`
 
@@ -32,6 +33,9 @@ interface BotFactory {
     fun newBot(qq: Long, password: String): Bot
     fun newBot(qq: Long, passwordMd5: ByteArray, configuration: BotConfiguration): Bot
     fun newBot(qq: Long, passwordMd5: ByteArray): Bot
+    // 在 2.15.0 中加入
+    fun newBot(qq: Long, authorization: BotAuthorization)
+    fun newBot(qq: Long, authorization: BotAuthorization, configuration: BotConfiguration)
     
     companion object : BotFactory by BotFactoryImpl
 }
@@ -54,16 +58,27 @@ Bot bot = BotFactory.INSTANCE.newBot(    );
 仅能在构造 Bot 时修改其配置：
 ```
 // Kotlin
+// 使用密码登录
 val bot = BotFactory.newBot(qq, password) {
     // 配置，例如：
     fileBasedDeviceInfo()
 }
+// 在 2.15.0 中加入, 使用二维码登录
+val bot = BotFactory.newBot(qq, BotAuthorization.byQRCode()) {
+    protocol = BotConfiguration.MiraiProtocol.ANDROID_WATCH
+}
 
 // Java
+// 使用密码登录
 Bot bot = BotFactory.INSTANCE.newBot(qq, password, new BotConfiguration() {{
     // 配置，例如：
     fileBasedDeviceInfo()
-}})
+}});
+Bot bot = BotFactory.INSTANCE.newBot(qq, password, configuration -> {})
+// 在 2.15.0 中加入, 使用二维码登录
+Bot bot = BotFactory.INSTANCE.newBot(qq, BotAuthorization.byQRCode(), configuration -> {
+    configuration.setProtocol(BotConfiguration.MiraiProtocol.ANDROID_WATCH);
+});
 ```
 
 下文示例代码都要放入 `// 配置` 中。
@@ -87,7 +102,7 @@ setHeartbeatStrategy(BotConfiguration.HeartbeatStrategy.REGISTER)
 ```
 
 #### 切换登录协议
-Mirai 支持多种登录协议：`ANDROID_PHONE`，`ANDROID_PAD`，`ANDROID_WATCH`，默认使用 `ANDROID_PHONE`。
+Mirai 支持多种登录协议：`ANDROID_PHONE`，`ANDROID_PAD`，`ANDROID_WATCH`，`IPAD`，`MACOS` 默认使用 `ANDROID_PHONE`。
 
 若登录失败，可尝试切换协议。**但注意部分功能在部分协议上不受支持**，详见源码内注释。
 
@@ -104,8 +119,8 @@ setProtocol(MiraiProtocol.ANDROID_PAD)
 
 在登录时可能遇到图形验证码或滑动验证码，Mirai 会使用 `LoginSolver` 解决验证码。
 
-- 在 JVM, Mirai 会根据环境支持情况选择 Swing/CLI 实现，通常不需要手动提供
-- 在 Android 需要手动提供 `LoginSolver`
+- 在 JVM, Mirai 提供默认的命令行实现
+- 在 Android 需要手动实现 `LoginSolver`
 
 若要覆盖默认的 `LoginSolver` （通常不需要）：
 ```
@@ -175,7 +190,8 @@ deviceInfo = { bot ->  /* create device info */   }
 setDeviceInfo(bot -> /* create device info */)
 ```
 
-在线生成自定义设备信息的 `device.json`: https://ryoii.github.io/mirai-devicejs-generator/
+在线生成自定义设备信息的 `device.json`: https://ryoii.github.io/mirai-devicejs-generator/  
+更加仿真的设备信息的 `device.json`: https://github.com/cssxsh/mirai-device-generator
 
 #### 使用其他日志库接管 mirai 日志系统
 *mirai 2.7 起支持*
@@ -254,23 +270,26 @@ contactListCache.setSaveIntervalMillis(60000) // 可选设置有更新时的保�
 
 ### 处理滑动验证码
 
-[project-mirai/mirai-login-solver-selenium]: https://github.com/project-mirai/mirai-login-solver-selenium
+[mirai-login-solver-sakura]: https://github.com/KasukuSakura/mirai-login-solver-sakura
 
 服务器正在大力推广滑块验证码。
 
 部分账号可以跳过滑块验证码，Mirai 会自动尝试。  
-若你的账号无法跳过验证，可在 [project-mirai/mirai-login-solver-selenium] 查看处理方案。
+若你的账号无法跳过验证，可尝试使用 [mirai-login-solver-sakura] 处理。
+
+**若遇到滑块验证问题无法解决，可以参考[论坛帮助页面](https://mirai.mamoe.net/topic/223)。**
 
 ### 常见登录失败原因
 
 [#993]: https://github.com/mamoe/mirai/discussions/993
 
-| 错误信息       | 可能的原因        | 可能的解决方案                                               |
-|:--------------|:---------------|:-----------------------------------------------------------|
-| 当前版本过低    | 密码错误         | 检查密码或修改密码到 16 位以内                                  |
-| 当前上网环境异常 | 设备锁           | 开启或关闭设备锁 (登录保护)                                    |
-| 禁止登录       | 需要处理滑块验证码 | [project-mirai/mirai-login-solver-selenium]                |
-| 密码错误       | 密码错误或过长     | 手机协议最大支持 16 位密码 ([#993]). 在官方 PC 客户端登录后修改密码 |
+| 错误信息       | 可能的原因                | 可能的解决方案                                     |
+|:-----------|:---------------------|:--------------------------------------------|
+| 密码错误       | 密码错误或过长              | 手机协议最大支持 16 位密码 ([#993]). 在官方 PC 客户端登录后修改密码 |
+| `code=45`  | 协议版本过低或设备信息被拉黑       | 删除 device.json, 让其重新生成                      |
+| `code=235` | 协议版本过低或设备信息被拉黑       | 删除 device.json, 让其重新生成                      |
+| `code=237` | 滑块验证处理过慢或者提交ticket有误 | 尝试使用 [mirai-login-solver-sakura] 处理滑块验证     |
+| `code=238` | 当前协议已禁止密码登录          | 使用扫码登录                                      |
 
 若以上方案无法解决问题，请尝试 [切换登录协议](#切换登录协议) 和 **[处理滑动验证码](#处理滑动验证码)**。
 
@@ -282,12 +301,16 @@ contactListCache.setSaveIntervalMillis(60000) // 可选设置有更新时的保�
 
 参阅 [DebuggingNetwork.md](DebuggingNetwork.md)
 
+## 附录: 模拟测试框架
+
+参阅 [Mocking.md](mocking/Mocking.md)
+
 > 下一步，[Contacts](Contacts.md)
 >
 > [回到 Mirai 文档索引](CoreAPI.md)
 
 
-<!--
+<!-- BEGIN DROP A
 
 ## 附录
 
@@ -418,4 +441,4 @@ dependencies {
 </dependencies>
 ```
 
--->
+END DROP A -->

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -7,14 +7,13 @@
  * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:Suppress("EXPERIMENTAL_API_USAGE", "NOTHING_TO_INLINE", "EXPERIMENTAL_OVERRIDE")
-@file:OptIn(JavaFriendlyAPI::class)
+@file:Suppress("EXPERIMENTAL_API_USAGE", "EXPERIMENTAL_OVERRIDE")
 @file:JvmBlockingBridge
 
 package net.mamoe.mirai.contact
 
 import kotlinx.coroutines.CoroutineScope
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.IMirai
 import net.mamoe.mirai.Mirai
@@ -67,12 +66,11 @@ public interface Contact : ContactOrBot, CoroutineScope {
      * 发送纯文本消息
      * @see sendMessage
      */
-    public suspend fun sendMessage(message: String): MessageReceipt<Contact> = this.sendMessage(message.toPlainText())
+    public suspend fun sendMessage(message: String): MessageReceipt<Contact> =
+        this.sendMessage(message.toPlainText())
 
     /**
      * 上传一个 [资源][ExternalResource] 作为图片以备发送.
-     *
-     * **无论上传是否成功都不会关闭 [resource]. 需要调用方手动关闭资源**
      *
      * 也可以使用其他扩展: [ExternalResource.uploadAsImage] 使用 [File], [InputStream] 等上传.
      *
@@ -87,6 +85,27 @@ public interface Contact : ContactOrBot, CoroutineScope {
      * @throws OverFileSizeMaxException 当图片文件过大而被服务器拒绝上传时抛出. (最大大小约为 20 MB, 但 mirai 限制的大小为 30 MB)
      */
     public suspend fun uploadImage(resource: ExternalResource): Image
+
+    /**
+     * 上传 [资源][ExternalResource] 作为短视频发送.
+     * 同时需要上传缩略图作为视频消息显示的封面.
+     *
+     * @see ShortVideo 查看有关短视频的更多信息
+     *
+     * @see BeforeShortVideoUploadEvent 短视频发送前事件，可通过中断来拦截视频上传.
+     * @see ShortVideoUploadEvent 短视频上传完成事件，不可拦截.
+     *
+     * @param thumbnail 短视频封面图，为图片资源.
+     * @param video 视频资源，目前仅支持上传 mp4 格式的视频.
+     * @param fileName 文件名，若为 `null` 则根据 [video] 自动生成.
+     *
+     * @since 2.16
+     */
+    public suspend fun uploadShortVideo(
+        thumbnail: ExternalResource,
+        video: ExternalResource,
+        fileName: String? = null
+    ): ShortVideo
 
     @JvmBlockingBridge
     public companion object {

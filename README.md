@@ -5,7 +5,6 @@
 
 ----
 
-![Gradle CI](https://github.com/mamoe/mirai/workflows/Gradle%20CI/badge.svg?branch=master)
 [![Gitter](https://badges.gitter.im/mamoe/mirai.svg)](https://gitter.im/mamoe/mirai?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 [![MiraiForum](https://img.shields.io/badge/post-on%20MiraiForum-yellow)](https://mirai.mamoe.net)
 
@@ -32,7 +31,7 @@ mirai 是一个在全平台下运行，提供 QQ Android 协议支持的高效�
 
 ### 许可证
 
-    Copyright (C) 2019-2021 Mamoe Technologies and contributors.
+    Copyright (C) 2019-2023 Mamoe Technologies and contributors.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
@@ -54,12 +53,9 @@ mirai 是一个在全平台下运行，提供 QQ Android 协议支持的高效�
 
 鉴于项目的特殊性，开发团队可能在任何时间**停止更新**或**删除项目**。
 
-### **mirai 的形象图及项目图标都拥有著作权保护。**
-**在未经过允许的情况下，任何人都不可以使用形象图和图标，或本文初的有关 mirai 名称来历的介绍原文，用于商业用途或是放置在项目首页，或其他未许可的行为。**
-
 ### 衍生软件需声明引用
 
-- 若引用 mirai 发布的软件包而不修改 mirai，则衍生项目需在描述的任意部位提及使用 mirai。
+- 若引用 mirai 发布的软件包而不修改 mirai，则衍生项目需在描述或应用内的任意部位提及使用 mirai。
 - 若修改 mirai 源代码再发布，**或参考 mirai 内部实现发布另一个项目**，则衍生项目必须在**文章首部**或 'mirai' 相关内容**首次出现**的位置**明确声明**来源于本仓库 (`https://github.com/mamoe/mirai`)。不得扭曲或隐藏免费且开源的事实。
 
 ## 协议支持
@@ -86,6 +82,7 @@ mirai 是一个在全平台下运行，提供 QQ Android 协议支持的高效�
 - 撤回群员消息
 - 自定义消息
 - 音乐分享
+- 短视频
 
 **群相关**
 - 群列表
@@ -117,21 +114,28 @@ mirai 是一个在全平台下运行，提供 QQ Android 协议支持的高效�
 
 **一切开发旨在学习，请勿用于非法用途**
 
-## 开始
+## 快速使用
 
 - **用户手册**: [UserManual](docs/UserManual.md)
-- 开发文档: [docs](docs/README.md), [docs.mirai.mamoe.net](https://docs.mirai.mamoe.net/)
-- 论坛: [Mirai Forum](https://mirai.mamoe.net/)
-  > *Mirai 只有唯一一个官方论坛 Mirai Forum*
 
-- 更新日志: [release](https://github.com/mamoe/mirai/releases)
-- 开发计划: [milestones](https://github.com/mamoe/mirai/milestones)
+  > 如果你希望快速部署一个 Mirai QQ 机器人，安装插件、并投入使用，请看这里
+- 论坛: [Mirai Forum](https://mirai.mamoe.net/)
+
+  > Mirai 只有**唯一一个**官方论坛 Mirai Forum
 - 在线讨论: [Gitter](https://gitter.im/mamoe/mirai?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-- mirai 开发组和官方系列项目: [project-mirai](https://github.com/project-mirai)
-- mirai 社区相关项目 (旧): [awesome-mirai](https://github.com/project-mirai/awsome-mirai/blob/master/README.md)
+## 开发相关
 
-- 帮助 mirai: [CONTRIBUTING](CONTRIBUTING.md)
+- 开发文档: [在 GitHub 阅读](docs/README.md)
+  或 [在 docs.mirai.mamoe.net 阅读](https://docs.mirai.mamoe.net/)
+- 参与贡献: [CONTRIBUTING](docs/contributing/README.md)
+- 更新日志: [release](https://github.com/mamoe/mirai/releases)
+- 开发计划: [milestones](https://github.com/mamoe/mirai/milestones)
+
+- mirai 开发组和官方系列项目: [project-mirai](https://github.com/project-mirai)
+- mirai 社区相关项目 (
+  旧): [awesome-mirai](https://github.com/project-mirai/awsome-mirai/blob/master/README.md)
+
 
 ## 赞助
 - 本着与更多 mirai 开发者、用户、支持者共建更好的学习环境为目的，mirai 自 2021 年 3 月 1 日发起官方社区的建设。社区建设可能涉及：[学习论坛](https://mirai.mamoe.net)、[插件中心（在建）](https://github.com/project-mirai/mirai-plugin-center)等。由于社区的运维需要经费，mirai 项目开启 sponsor 功能。

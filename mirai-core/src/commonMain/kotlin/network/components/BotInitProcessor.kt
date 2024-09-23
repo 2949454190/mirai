@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.components
@@ -51,6 +51,9 @@ internal interface BotInitProcessor {
      *
      * This is called in [MessageSvcPushForceOffline], which is in case connection is closed by server during the [NetworkHandler.State.LOADING] state.
      *
+     * This function only marks current initialization work has failed. It has nothing to do with result of login.
+     * To update that result, update `bot.components[SsoProcessor].firstLoginResult`.
+     *
      * See [BotInitProcessorImpl.state].
      */
     fun setLoginHalted()
@@ -90,30 +93,33 @@ internal class BotInitProcessorImpl(
             val registerResp =
                 context[SsoProcessor].registerResp ?: error("Internal error: registerResp is not yet available.")
 
-            // do them parallel.
             context[MessageSvcSyncer].startSync()
             context[BdhSessionSyncer].loadFromCache()
 
-
+            // do them parallel.
             coroutineScope {
-                launch { runWithCoverage { context[OtherClientUpdater].update() } }
-                launch { runWithCoverage { context[ContactUpdater].loadAll(registerResp.origin) } }
+                launch { runWithCoverage("loading OtherClients") { context[OtherClientUpdater].update() } }
+                launch { runWithCoverage("loading friends") { context[ContactUpdater].reloadFriendList(registerResp.origin) } }
+                launch { runWithCoverage("loading groups") { context[ContactUpdater].reloadGroupList() } }
+                launch { runWithCoverage("loading otherClients") { context[ContactUpdater].reloadStrangerList() } }
+                launch { runWithCoverage("loading friendGroups") { context[ContactUpdater].reloadFriendGroupList() } }
             }
 
             state.value = INITIALIZED
-            bot.components[SsoProcessor].firstLoginSucceed = true
+            bot.components[SsoProcessor].casFirstLoginResult(null, FirstLoginResult.PASSED)
         } catch (e: Throwable) {
             setLoginHalted()
+            bot.components[SsoProcessor].casFirstLoginResult(null, FirstLoginResult.OTHER_FAILURE)
             throw e
         }
     }
 
-    private inline fun runWithCoverage(block: () -> Unit) {
+    private inline fun runWithCoverage(hint: String, block: () -> Unit) {
         try {
             block()
         } catch (e: NetworkException) {
             logger.warning(
-                "An NetworkException was thrown during initialization process of Bot ${bot.id}. " +
+                "An NetworkException was thrown during '$hint' of Bot ${bot.id}. " +
                         "This means your network is unstable at this moment, " +
                         "or the server has closed the connection due to some reason (you will see the cause if further trials are all failed). " +
                         "Halting the log-in process to wait for a while to reconnect..."
@@ -121,7 +127,7 @@ internal class BotInitProcessorImpl(
             throw e
         } catch (e: Throwable) {
             logger.warning(
-                "An exception was thrown during initialization process of Bot ${bot.id}. " +
+                "An exception was thrown during '$hint' of Bot ${bot.id}. " +
                         "Trying to ignore the error and continue logging in...",
                 e
             )

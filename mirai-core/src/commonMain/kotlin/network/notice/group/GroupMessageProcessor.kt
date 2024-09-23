@@ -18,11 +18,10 @@ import net.mamoe.mirai.event.events.GroupMessageEvent
 import net.mamoe.mirai.event.events.GroupMessageSyncEvent
 import net.mamoe.mirai.event.events.MemberCardChangeEvent
 import net.mamoe.mirai.event.events.MemberSpecialTitleChangeEvent
-import net.mamoe.mirai.internal.contact.GroupImpl
-import net.mamoe.mirai.internal.contact.NormalMemberImpl
-import net.mamoe.mirai.internal.contact.info
+import net.mamoe.mirai.internal.contact.*
 import net.mamoe.mirai.internal.contact.info.MemberInfoImpl
-import net.mamoe.mirai.internal.contact.newAnonymous
+import net.mamoe.mirai.internal.message.RefineContextKey
+import net.mamoe.mirai.internal.message.SimpleRefineContext
 import net.mamoe.mirai.internal.message.toMessageChainOnline
 import net.mamoe.mirai.internal.network.Packet
 import net.mamoe.mirai.internal.network.components.NoticePipelineContext
@@ -34,6 +33,7 @@ import net.mamoe.mirai.internal.network.protocol.data.proto.ImMsgBody
 import net.mamoe.mirai.internal.network.protocol.data.proto.MsgComm
 import net.mamoe.mirai.internal.network.protocol.data.proto.MsgOnlinePush
 import net.mamoe.mirai.internal.network.protocol.data.proto.Oidb0x8fc
+import net.mamoe.mirai.internal.network.protocol.packet.chat.voice.PttStore
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.message.data.MessageSourceKind
 import net.mamoe.mirai.utils.*
@@ -107,6 +107,26 @@ internal class GroupMessageProcessor(
                     elem.anonGroupMsg != null -> anonymous = elem.anonGroupMsg
                 }
             }
+
+            msg.msg.msgBody.richText.ptt?.let pttPatch@{ ptt ->
+                if (ptt.downPara.isNotEmpty()) return@pttPatch
+
+                kotlin.runCatching {
+                    val response = bot.network.sendAndExpect(
+                        PttStore.GroupPttDown(
+                            bot.client,
+                            group.groupCode,
+                            ptt,
+                            msg.msg
+                        ),
+                        5000,
+                        2
+                    )
+
+                    ptt.downPara =
+                        "http://${response.strDomain}${response.downPara.decodeToString()}".encodeToByteArray()
+                }
+            }
         }
 
 
@@ -139,7 +159,20 @@ internal class GroupMessageProcessor(
         if (isFromSelfAccount) {
             collect(
                 GroupMessageSyncEvent(
-                    message = msgs.map { it.msg }.toMessageChainOnline(bot, group.id, MessageSourceKind.GROUP),
+                    client = bot.otherClients.find { it.appId == msgHead.fromInstid }
+                        ?: return, // don't compare with dstAppId. diff.
+                    message = msgs.map { it.msg }.toMessageChainOnline(
+                        bot,
+                        group.id,
+                        MessageSourceKind.GROUP,
+                        SimpleRefineContext(
+                            mutableMapOf(
+                                RefineContextKey.MessageSourceKind to MessageSourceKind.GROUP,
+                                RefineContextKey.FromId to sender.uin,
+                                RefineContextKey.GroupIdOrZero to group.id,
+                            )
+                        )
+                    ),
                     time = msgHead.msgTime,
                     group = group,
                     sender = sender,
@@ -154,7 +187,18 @@ internal class GroupMessageProcessor(
                 GroupMessageEvent(
                     senderName = nameCard.nick,
                     sender = sender,
-                    message = msgs.map { it.msg }.toMessageChainOnline(bot, group.id, MessageSourceKind.GROUP),
+                    message = msgs.map { it.msg }.toMessageChainOnline(
+                        bot,
+                        group.id,
+                        MessageSourceKind.GROUP,
+                        SimpleRefineContext(
+                            mutableMapOf(
+                                RefineContextKey.MessageSourceKind to MessageSourceKind.GROUP,
+                                RefineContextKey.FromId to sender.uin,
+                                RefineContextKey.GroupIdOrZero to group.id,
+                            )
+                        )
+                    ),
                     permission = sender.permission,
                     time = msgHead.msgTime,
                 ),

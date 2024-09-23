@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -17,10 +17,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.message.code.CodableMessage
 import net.mamoe.mirai.message.code.internal.appendStringAsMiraiCode
+import net.mamoe.mirai.message.data.visitor.MessageVisitor
 import net.mamoe.mirai.utils.MiraiExperimentalApi
+import net.mamoe.mirai.utils.MiraiInternalApi
 import net.mamoe.mirai.utils.NotStableForInheritance
 import net.mamoe.mirai.utils.safeCast
 import kotlin.annotation.AnnotationTarget.*
+import kotlin.jvm.*
 
 /**
  * XML, JSON 消息等富文本消息.
@@ -36,6 +39,7 @@ import kotlin.annotation.AnnotationTarget.*
 // using polymorphic serializer from Message.Serializer
 @NotStableForInheritance
 public interface RichMessage : MessageContent, ConstrainSingle {
+    @OptIn(MiraiExperimentalApi::class)
     override val key: MessageKey<RichMessage> get() = Key
 
     /**
@@ -47,6 +51,11 @@ public interface RichMessage : MessageContent, ConstrainSingle {
      * 消息内容. 可为 JSON 文本或 XML 文本
      */
     public val content: String
+
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitRichMessage(this, data)
+    }
 
     /**
      * 一些模板
@@ -110,6 +119,11 @@ public data class LightApp(override val content: String) : RichMessage, CodableM
 
     public override fun toString(): String = "[mirai:app:$content]"
 
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitLightApp(this, data)
+    }
+
     @MiraiExperimentalApi
     override fun appendMiraiCodeTo(builder: StringBuilder) {
         builder.append("[mirai:app:").appendStringAsMiraiCode(content).append(']')
@@ -148,6 +162,11 @@ public class SimpleServiceMessage(
         return result
     }
 
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitSimpleServiceMessage(this, data)
+    }
+
     public companion object {
         public const val SERIAL_NAME: String = "SimpleServiceMessage"
     }
@@ -167,6 +186,7 @@ public class SimpleServiceMessage(
  */
 @NotStableForInheritance
 public interface ServiceMessage : RichMessage, CodableMessage {
+    @OptIn(MiraiExperimentalApi::class)
     public companion object Key :
         AbstractPolymorphicMessageKey<RichMessage, ServiceMessage>(RichMessage, { it.safeCast() })
 
@@ -174,6 +194,11 @@ public interface ServiceMessage : RichMessage, CodableMessage {
      * 目前未知, XML 一般为 60, JSON 一般为 1
      */
     public val serviceId: Int
+
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitServiceMessage(this, data)
+    }
 
     @MiraiExperimentalApi
     override fun appendMiraiCodeTo(builder: StringBuilder) {
@@ -185,6 +210,11 @@ public interface ServiceMessage : RichMessage, CodableMessage {
 @Serializable
 public abstract class AbstractServiceMessage : ServiceMessage {
     public override fun toString(): String = "[mirai:service:$serviceId,$content]"
+
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitAbstractServiceMessage(this, data)
+    }
 }
 
 

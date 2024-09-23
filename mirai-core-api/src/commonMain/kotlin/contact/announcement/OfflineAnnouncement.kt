@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -16,7 +16,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.contact.announcement.OfflineAnnouncement.Companion.serializer
 import net.mamoe.mirai.utils.cast
-import net.mamoe.mirai.utils.copy
 import net.mamoe.mirai.utils.map
 import net.mamoe.mirai.utils.safeCast
 import kotlin.contracts.InvocationKind
@@ -40,9 +39,6 @@ import kotlin.contracts.contract
 public sealed interface OfflineAnnouncement : Announcement {
     public companion object {
         public const val SERIAL_NAME: String = "OfflineAnnouncement"
-
-        @JvmStatic
-        public fun serializer(): KSerializer<OfflineAnnouncement> = Serializer
 
         /**
          * 创建 [OfflineAnnouncement]. 若 [announcement] 类型为 [OfflineAnnouncement] 则直接返回 [announcement].
@@ -83,7 +79,7 @@ public sealed interface OfflineAnnouncement : Announcement {
         }
 
         internal object Serializer : KSerializer<OfflineAnnouncement> by OfflineAnnouncementImpl.serializer().map(
-            resultantDescriptor = OfflineAnnouncementImpl.serializer().descriptor.copy(SERIAL_NAME),
+            resultantDescriptor = OfflineAnnouncementImpl.serializer().descriptor,
             deserialize = { it },
             serialize = { it.safeCast<OfflineAnnouncementImpl>() ?: create(content, parameters).cast() }
         )

@@ -1,22 +1,25 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 @file:Suppress("UNUSED_VARIABLE")
 
-import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import BinaryCompatibilityConfigurator.configureBinaryValidators
+import shadow.relocateCompileOnly
 
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
 
-    //id("kotlinx-atomicfu")
+    id("kotlinx-atomicfu")
     id("signing")
-    id("net.mamoe.kotlin-jvm-blocking-bridge")
+    id("me.him188.kotlin-jvm-blocking-bridge")
+    id("me.him188.kotlin-dynamic-delegation")
+//    id("me.him188.maven-central-publish")
 
     `maven-publish`
 }
@@ -25,46 +28,31 @@ description = "Mirai API module"
 
 kotlin {
     explicitApi()
+    apply(plugin = "explicit-api")
 
-    if (isAndroidSDKAvailable) {
-//        apply(from = rootProject.file("gradle/android.gradle"))
-//        android("android") {
-//            publishAllLibraryVariants()
-//        }
-        jvm("android") {
-            attributes.attribute(KotlinPlatformType.attribute, KotlinPlatformType.androidJvm)
-            //   publishAllLibraryVariants()
-        }
-    } else {
-        printAndroidNotInstalled()
-    }
-
-    jvm("common") {
-        attributes.attribute(KotlinPlatformType.attribute, KotlinPlatformType.common)
-    }
-
-    jvm("jvm")
-
-//    jvm("android") {
-//        attributes.attribute(Attribute.of("mirai.target.platform", String::class.java), "android")
-//    }
+    configureJvmTargetsHierarchical("net.mamoe.mirai")
 
     sourceSets {
         val commonMain by getting {
             dependencies {
                 api(kotlin("reflect"))
-                api(`kotlinx-serialization-core-jvm`)
-                api(`kotlinx-serialization-json-jvm`)
-                api(`kotlinx-coroutines-jdk8`)
-                api(`ktor-client-okhttp`)
+                api(`kotlinx-serialization-core`)
+                api(`kotlinx-serialization-json`)
+                api(`kotlinx-coroutines-core`) // don't remove it, otherwise IDE will complain
 
                 implementation(project(":mirai-core-utils"))
-                implementation(`kotlinx-serialization-protobuf-jvm`)
+                implementation(project(":mirai-console-compiler-annotations"))
+                implementation(`kotlinx-serialization-protobuf`)
+                implementation(`kotlinx-atomicfu`)
                 implementation(`jetbrains-annotations`)
-                implementation(`log4j-api`)
-                implementation(`kotlinx-atomicfu-jvm`)
-                implementationKotlinxIoJvm()
 
+                // runtime from mirai-core-utils
+                relocateCompileOnly(`ktor-io_relocated`)
+
+                implementation(`kotlin-jvm-blocking-bridge`)
+                implementation(`kotlin-dynamic-delegation`)
+
+                implementation(`log4j-api`)
                 compileOnly(`slf4j-api`)
             }
         }
@@ -72,24 +60,24 @@ kotlin {
         commonTest {
             dependencies {
                 runtimeOnly(`log4j-core`)
+                implementation(`kotlinx-coroutines-test`)
+                api(`junit-jupiter-api`)
             }
         }
 
-        if (isAndroidSDKAvailable) {
-            val androidMain by getting {
-                dependsOn(commonMain)
+        afterEvaluate {
+            findByName("androidUnitTest")?.apply {
                 dependencies {
-                    compileOnly(`android-runtime`)
-//                    api(`ktor-client-android`)
+                    runtimeOnly(`slf4j-api`)
                 }
             }
         }
 
-        val jvmMain by getting {
+        findByName("jvmMain")?.apply {
 
         }
 
-        val jvmTest by getting {
+        findByName("jvmTest")?.apply {
             dependencies {
                 runtimeOnly(files("build/classes/kotlin/jvm/test")) // classpath is not properly set by IDE
             }
@@ -97,7 +85,11 @@ kotlin {
     }
 }
 
-if (isAndroidSDKAvailable) {
+atomicfu {
+    transformJvm = false
+}
+
+if (tasks.findByName("androidMainClasses") != null) {
     tasks.register("checkAndroidApiLevel") {
         doFirst {
             analyzes.AndroidApiLevelCheck.check(
@@ -109,12 +101,16 @@ if (isAndroidSDKAvailable) {
         group = "verification"
         this.mustRunAfter("androidMainClasses")
     }
-    tasks.getByName("androidTest").dependsOn("checkAndroidApiLevel")
+    tasks.findByName("androidTest")?.dependsOn("checkAndroidApiLevel")
 }
 
 configureMppPublishing()
+configureBinaryValidators(setOf("jvm", "android").filterTargets())
 
-afterEvaluate {
-    project(":binary-compatibility-validator").tasks["apiBuild"].dependsOn(project(":mirai-core-api").tasks["build"])
-    project(":binary-compatibility-validator-android").tasks["apiBuild"].dependsOn(project(":mirai-core-api").tasks["build"])
-}
+//mavenCentralPublish {
+//    artifactId = "mirai-core-api"
+//    githubProject("mamoe", "mirai")
+//    developer("Mamoe Technologies", email = "support@mamoe.net", url = "https://github.com/mamoe")
+//    licenseFromGitHubProject("AGPLv3", "dev")
+//    publishPlatformArtifactsInRootModule = "jvm"
+//}

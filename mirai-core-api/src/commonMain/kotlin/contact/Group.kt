@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -7,21 +7,25 @@
  * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:Suppress("EXPERIMENTAL_API_USAGE", "unused", "UnusedImport", "NOTHING_TO_INLINE")
+@file:Suppress("EXPERIMENTAL_API_USAGE", "unused", "UnusedImport")
 @file:JvmBlockingBridge
 
 package net.mamoe.mirai.contact
 
 import kotlinx.coroutines.CoroutineScope
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.Bot
+import net.mamoe.mirai.contact.active.GroupActive
 import net.mamoe.mirai.contact.announcement.Announcements
+import net.mamoe.mirai.contact.essence.Essences
+import net.mamoe.mirai.contact.file.RemoteFiles
+import net.mamoe.mirai.contact.roaming.RoamingSupported
 import net.mamoe.mirai.event.events.*
 import net.mamoe.mirai.message.MessageReceipt
 import net.mamoe.mirai.message.data.*
-import net.mamoe.mirai.utils.ExternalResource
-import net.mamoe.mirai.utils.MiraiExperimentalApi
-import net.mamoe.mirai.utils.NotStableForInheritance
+import net.mamoe.mirai.utils.*
+import kotlin.jvm.JvmStatic
+import kotlin.jvm.JvmSynthetic
 
 /**
  * 群.
@@ -50,10 +54,12 @@ import net.mamoe.mirai.utils.NotStableForInheritance
  *
  * 可通过 [Group.announcements] 获取公告支持. 可在 [Announcements] 查看详细文档.
  *
- * ##
+ * ## 群文件
+ *
+ * 使用 [Group.files] 获取群文件管理器后操作. 详见 [RemoteFiles].
  */
 @NotStableForInheritance
-public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported {
+public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported, RoamingSupported {
     /**
      * 群名称.
      *
@@ -105,11 +111,21 @@ public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported 
     public val botPermission: MemberPermission get() = botAsMember.permission
 
     /**
-     * 群头像下载链接.
+     * 群头像下载链接, 规格默认为 [AvatarSpec.LARGEST]
+     * @see avatarUrl
      */
     public override val avatarUrl: String
-        get() = "https://p.qlogo.cn/gh/$id/${id}/640"
+        get() = avatarUrl(spec = AvatarSpec.LARGEST)
 
+    /**
+     * 群头像下载链接.
+     * @param spec 头像的规格.
+     * @since 2.11
+     */
+    public override fun avatarUrl(spec: AvatarSpec): String {
+        @OptIn(MiraiInternalApi::class)
+        return "http://p.qlogo.cn/gh/${id}/${id}/${spec.size}"
+    }
 
     /**
      * 群成员列表, 不含机器人自己, 含群主.
@@ -123,6 +139,13 @@ public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported 
      * @since 2.7
      */
     public val announcements: Announcements
+
+
+    /**
+     * 获取群荣誉相关功能接口
+     * @since 2.13
+     */
+    public val active: GroupActive
 
     /**
      * 获取群成员实例. 不存在时返回 `null`.
@@ -188,13 +211,14 @@ public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported 
     /**
      * 上传一个语音消息以备发送. 该方法已弃用且将在未来版本删除, 请使用 [uploadAudio].
      */
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION_ERROR")
     @Deprecated(
         "use uploadAudio",
         replaceWith = ReplaceWith("uploadAudio(resource)"),
-        level = DeprecationLevel.WARNING
+        level = DeprecationLevel.HIDDEN
     ) // deprecated since 2.7
-    public suspend fun uploadVoice(resource: ExternalResource): Voice
+    @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
+    public suspend fun uploadVoice(resource: ExternalResource): net.mamoe.mirai.message.data.Voice
 
     /**
      * 将一条消息设置为群精华消息, 需要管理员或群主权限.
@@ -205,6 +229,13 @@ public interface Group : Contact, CoroutineScope, FileSupported, AudioSupported 
      * @since 2.2
      */
     public suspend fun setEssenceMessage(source: MessageSource): Boolean
+
+    /**
+     * 群精华消息相关功能接口
+     *
+     * @since 2.15
+     */
+    public val essences: Essences
 
     public companion object {
         /**
@@ -239,9 +270,10 @@ public interface GroupSettings {
      * @see Group.announcements
      */
     @Deprecated(
-        level = DeprecationLevel.WARNING,
+        level = DeprecationLevel.HIDDEN,
         message = "group.announcements.asFlow().filter { it.parameters.sendToNewMember }.firstOrNull()",
     ) // deprecated since 2.7
+    @DeprecatedSinceMirai(warningSince = "2.7", errorSince = "2.10", hiddenSince = "2.11")
     public var entranceAnnouncement: String
 
     /**
@@ -280,13 +312,13 @@ public interface GroupSettings {
  * 同 [get]. 在一些不适合使用 [get] 的情境下使用 [getMember].
  */
 @JvmSynthetic
-public inline fun Group.getMember(id: Long): NormalMember? = get(id)
+public fun Group.getMember(id: Long): NormalMember? = get(id)
 
 /**
  * 同 [getMemberOrFail]. 在一些不适合使用 [getOrFail] 的情境下使用 [getMemberOrFail].
  */
 @JvmSynthetic
-public inline fun Group.getMemberOrFail(id: Long): NormalMember = getOrFail(id)
+public fun Group.getMemberOrFail(id: Long): NormalMember = getOrFail(id)
 
 
 /**
@@ -294,5 +326,5 @@ public inline fun Group.getMemberOrFail(id: Long): NormalMember = getOrFail(id)
  *
  * @see Group.botMuteRemaining 剩余禁言时间
  */
-public inline val Group.isBotMuted: Boolean get() = this.botMuteRemaining != 0
+public val Group.isBotMuted: Boolean get() = this.botMuteRemaining != 0
 

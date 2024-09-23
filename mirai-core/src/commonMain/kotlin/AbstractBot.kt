@@ -1,17 +1,20 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
+
+@file:OptIn(LowLevelApi::class)
 
 package net.mamoe.mirai.internal
 
 import kotlinx.coroutines.*
 import net.mamoe.mirai.Bot
+import net.mamoe.mirai.LowLevelApi
 import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.contact.ContactList
 import net.mamoe.mirai.event.EventChannel
@@ -24,18 +27,19 @@ import net.mamoe.mirai.internal.network.component.ComponentStorage
 import net.mamoe.mirai.internal.network.components.SsoProcessor
 import net.mamoe.mirai.internal.network.handler.NetworkHandler
 import net.mamoe.mirai.internal.network.handler.NetworkHandler.State
+import net.mamoe.mirai.internal.network.handler.asCoroutineExceptionHandler
 import net.mamoe.mirai.internal.network.handler.selector.NetworkException
-import net.mamoe.mirai.internal.network.impl.netty.asCoroutineExceptionHandler
 import net.mamoe.mirai.network.LoginFailedException
 import net.mamoe.mirai.supervisorJob
 import net.mamoe.mirai.utils.*
 import kotlin.collections.set
 import kotlin.coroutines.CoroutineContext
+import kotlin.jvm.Volatile
 
 /**
  * Protocol-irrelevant implementations
  */
-internal abstract class AbstractBot constructor(
+internal abstract class AbstractBot(
     final override val configuration: BotConfiguration,
     final override val id: Long,
 ) : Bot, CoroutineScope {
@@ -56,7 +60,10 @@ internal abstract class AbstractBot constructor(
                     logger.info { "Bot cancelled" + throwable?.message?.let { ": $it" }.orEmpty() }
 
                     kotlin.runCatching {
-                        network.close(throwable)
+                        val bot = bot
+                        if (bot is AbstractBot && bot.networkInitialized) {
+                            bot.network.close(throwable)
+                        }
                     }.onFailure {
                         if (it !is CancellationException) logger.error(it)
                     }
@@ -96,7 +103,7 @@ internal abstract class AbstractBot constructor(
     final override val strangers: ContactList<StrangerImpl> = ContactList()
 
     final override val asFriend: FriendImpl by lazy {
-        Mirai.newFriend(this, FriendInfoImpl(uin, "", "")).cast()
+        Mirai.newFriend(this, FriendInfoImpl(uin, "", "", 0)).cast()
     } // nick is initialized later on login
     final override val asStranger: StrangerImpl by lazy {
         Mirai.newStranger(this, StrangerInfoImpl(bot.id, bot.nick)).cast()
@@ -106,10 +113,16 @@ internal abstract class AbstractBot constructor(
     override fun close(cause: Throwable?) {
         if (!this.isActive) return
 
-        if (cause == null) {
-            supervisorJob.cancel()
-        } else {
-            supervisorJob.cancel(CancellationException("Bot closed", cause))
+        try {
+            if (networkInitialized) {
+                network.close(cause)
+            }
+        } finally { // ensure CoroutineScope is always closed
+            if (cause == null) {
+                supervisorJob.cancel()
+            } else {
+                supervisorJob.cancel(CancellationException("Bot closed", cause))
+            }
         }
     }
 
@@ -120,10 +133,12 @@ internal abstract class AbstractBot constructor(
     ///////////////////////////////////////////////////////////////////////////
 
     @Volatile
-    private var networkInitialized = false
+    var networkInitialized = false
     val network: NetworkHandler by lazy {
-        networkInitialized = true
-        createNetworkHandler()
+        createNetworkHandler().also {
+            it.context // ensure components available
+            networkInitialized = true
+        }
     } // the selector handles renewal of [NetworkHandler]
 
     final override suspend fun login() {
@@ -131,13 +146,23 @@ internal abstract class AbstractBot constructor(
         try {
             network.resumeConnection()
         } catch (e: Throwable) { // failed to init
-            val cause = e.unwrap<NetworkException>()
-            if (!components[SsoProcessor].firstLoginSucceed) {
-                this.close(cause) // failed to do first login.
+            // lift cause to the top of the exception chain. e.g. LoginFailedException
+            val cause = if (e is NetworkException) {
+                e.unwrapForPublicApi()
+            } else e
+
+            try {
+                // close bot if it hadn't been done during `resumeConnection()`
+                if (!components[SsoProcessor].firstLoginSucceed) {
+                    close(cause) // failed to do first login, close bot
+                } else if (cause is LoginFailedException && cause.killBot) {
+                    close(cause) // re-login failed and has caused bot being somehow killed by server
+                }
+            } catch (errorInClose: Throwable) {
+                errorInClose.addSuppressed(cause)
+                throw errorInClose
             }
-            if (cause is LoginFailedException && cause.killBot) {
-                close(cause)
-            }
+
             throw cause
         }
         logger.info { "Bot login successful." }

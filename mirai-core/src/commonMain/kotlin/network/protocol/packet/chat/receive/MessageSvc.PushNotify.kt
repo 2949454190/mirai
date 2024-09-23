@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,9 +9,7 @@
 
 package net.mamoe.mirai.internal.network.protocol.packet.chat.receive
 
-import kotlinx.atomicfu.loop
-import kotlinx.io.core.ByteReadPacket
-import kotlinx.io.core.discardExact
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.network.components.SyncController.Companion.syncController
 import net.mamoe.mirai.internal.network.protocol.data.jce.RequestPushNotify
@@ -31,19 +29,23 @@ internal object MessageSvcPushNotify : IncomingPacketFactory<RequestPushNotify>(
     }
 
     override suspend fun QQAndroidBot.handle(packet: RequestPushNotify, sequenceId: Int): OutgoingPacket {
-        syncController.firstNotify.loop { firstNotify ->
-            network.run {
-                return MessageSvcPbGetMsg(
-                    client,
-                    MsgSvc.SyncFlag.START,
-                    if (firstNotify) {
-                        if (!syncController.firstNotify.compareAndSet(firstNotify, false)) {
-                            return@loop
-                        }
-                        null
-                    } else packet.vNotifyCookie,
-                )
+        while (true) {
+            val firstNotify = syncController.firstNotify
+
+            val cookie = if (firstNotify) {
+                if (!syncController.casFirstNotify(firstNotify, false)) {
+                    continue
+                }
+                null
+            } else {
+                packet.vNotifyCookie
             }
+
+            return MessageSvcPbGetMsg(
+                client,
+                MsgSvc.SyncFlag.START,
+                cookie,
+            )
         }
     }
 }

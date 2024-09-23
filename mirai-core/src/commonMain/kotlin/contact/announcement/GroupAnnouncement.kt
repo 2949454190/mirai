@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -13,6 +13,7 @@ package net.mamoe.mirai.internal.contact.announcement
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import net.mamoe.mirai.contact.announcement.AnnouncementImage
 import net.mamoe.mirai.utils.CheckableResponseA
 import net.mamoe.mirai.utils.JsonStruct
@@ -62,7 +63,8 @@ internal class GroupAnnouncementImage @MiraiInternalApi constructor(
 @Serializable
 internal data class GroupAnnouncementMsg(
     val text: String,
-    val text_face: String? = null,
+    @SerialName("text_face") val textFace: String? = null,
+    @SerialName("pics") val images: List<GroupAnnouncementImage> = emptyList(),
 //    val title: String? = null // no title any more
 )
 
@@ -77,4 +79,27 @@ internal data class GroupAnnouncementSettings(
     companion object {
         val DEFAULT = GroupAnnouncementSettings()
     }
+}
+
+@Serializable
+internal data class CgiData(
+    @SerialName("cgicode") val cgicode: Int,
+    @SerialName("data") val `data`: JsonElement,
+    @SerialName("msg") override val errorMessage: String,
+    @SerialName("retcode") override val errorCode: Int
+) : CheckableResponseA(), JsonStruct
+
+@Serializable
+internal data class GroupAnnouncementReadDetail(
+    @SerialName("read_total") val readTotal: Int = 0,
+    @SerialName("unread_total") val unreadTotal: Int = 0,
+    @SerialName("users") val users: List<User> = emptyList()
+) {
+    @Serializable
+    data class User(
+        @SerialName("avatar") val avatar: String,
+        @SerialName("display_name") val displayName: String,
+        @SerialName("face_flag") val faceFlag: Int,
+        @SerialName("uin") val uin: Long
+    )
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,12 +9,13 @@
 
 package net.mamoe.mirai.internal.utils.crypto
 
-import kotlinx.io.core.ByteReadPacket
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.utils.ByteArrayPool
 import net.mamoe.mirai.utils.toByteArray
 import net.mamoe.mirai.utils.toUHexString
 import kotlin.experimental.and
 import kotlin.experimental.xor
+import kotlin.jvm.JvmStatic
 import kotlin.random.Random
 
 /**
@@ -45,7 +46,7 @@ internal object TEA {
         length: Int = receiver.remaining.toInt() - offset,
         consumer: (ByteArray) -> Unit,
     ) {
-        ByteArrayPool.useInstance {
+        ByteArrayPool.useInstance(length) {
             receiver.readFully(it, offset, length)
             consumer(encrypt(it, key, length = length))
         }
@@ -67,7 +68,7 @@ internal object TEA {
         length: Int = (receiver.remaining - offset).toInt(),
         consumer: (ByteArray) -> R,
     ): R {
-        return ByteArrayPool.useInstance {
+        return ByteArrayPool.useInstance(length) {
             receiver.readFully(it, offset, length)
             consumer(decrypt(it, key, length))
         }.also { receiver.close() }

@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.message
@@ -13,7 +13,10 @@ import net.mamoe.mirai.Bot
 import net.mamoe.mirai.internal.message.DeepMessageRefiner.refineDeep
 import net.mamoe.mirai.internal.message.LightMessageRefiner.refineLight
 import net.mamoe.mirai.internal.message.LightMessageRefiner.refineMessageSource
+import net.mamoe.mirai.internal.message.flags.InternalFlagOnlyMessage
+import net.mamoe.mirai.internal.message.source.IncomingMessageSourceInternal
 import net.mamoe.mirai.message.data.*
+import net.mamoe.mirai.utils.cast
 import net.mamoe.mirai.utils.safeCast
 
 /**
@@ -97,6 +100,12 @@ internal class RefineContextKey<T : Any>(
             append(')')
         }
     }
+
+    internal companion object {
+        val MessageSourceKind = RefineContextKey<MessageSourceKind>("MessageSourceKind")
+        val FromId = RefineContextKey<Long>("FromId")
+        val GroupIdOrZero = RefineContextKey<Long>("GroupIdOrZero")
+    }
 }
 
 /**
@@ -106,6 +115,8 @@ internal interface RefineContext {
     operator fun contains(key: RefineContextKey<*>): Boolean
     operator fun <T : Any> get(key: RefineContextKey<T>): T?
     fun <T : Any> getNotNull(key: RefineContextKey<T>): T = get(key) ?: error("No such value of `$key`")
+    fun merge(other: RefineContext, override: Boolean): RefineContext
+    fun entries(): Set<Pair<RefineContextKey<*>, Any>>
 }
 
 internal interface MutableRefineContext : RefineContext {
@@ -116,8 +127,18 @@ internal interface MutableRefineContext : RefineContext {
 internal object EmptyRefineContext : RefineContext {
     override fun contains(key: RefineContextKey<*>): Boolean = false
     override fun <T : Any> get(key: RefineContextKey<T>): T? = null
+    override fun merge(other: RefineContext, override: Boolean): RefineContext {
+        return other
+    }
+    override fun entries(): Set<Pair<RefineContextKey<*>, Any>> {
+        return emptySet()
+    }
     override fun toString(): String {
         return "EmptyRefineContext"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        return other === EmptyRefineContext
     }
 }
 
@@ -138,7 +159,31 @@ internal class SimpleRefineContext(
     override fun remove(key: RefineContextKey<*>) {
         delegate.remove(key)
     }
+
+    override fun entries(): Set<Pair<RefineContextKey<*>, Any>> {
+        return delegate.entries.map { (k, v) -> k to v }.toSet()
+    }
+
+    override fun merge(other: RefineContext, override: Boolean): RefineContext {
+        val new = SimpleRefineContext(*entries().toTypedArray())
+        other.entries().forEach { (key, value) ->
+            if (new[key] == null || override) {
+                new[key as RefineContextKey<Any>] = value
+            }
+        }
+        return new
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (other !is RefineContext) return false
+        if (other === this) return true
+
+        return other.entries() == entries()
+    }
 }
+
+internal fun SimpleRefineContext(vararg elements: Pair<RefineContextKey<*>, Any>): SimpleRefineContext =
+    SimpleRefineContext(elements.toMap().toMutableMap())
 
 /**
  * 执行不需要 `suspend` 的 refine. 用于 [MessageSource.originalMessage].
@@ -154,8 +199,9 @@ internal object LightMessageRefiner : MessageRefiner() {
         val source = this.sourceOrNull?.safeCast<IncomingMessageSourceInternal>() ?: return this
         val originalMessage = this
         source.originalMessageLazy = lazy {
-            @Suppress("INVISIBLE_MEMBER")
-            createMessageChainImplOptimized(originalMessage.filterNot { it is MessageSource })
+            originalMessage.filterNot { it is MessageSource }.toMessageChain()
+//            @Suppress("INVISIBLE_MEMBER")
+//            createMessageChainImplOptimized(originalMessage.filterNot { it is MessageSource })
         }
         return this
     }
@@ -165,6 +211,15 @@ internal object LightMessageRefiner : MessageRefiner() {
         refineContext: RefineContext = EmptyRefineContext,
     ): MessageChain {
         return refineImpl(bot) { it.tryRefine(bot, this, refineContext) }
+    }
+
+    /**
+     * 去除 [MessageChain] 携带的内部标识
+     *
+     * 用于 [createMessageReceipt] <- `RemoteFile.uploadAndSend` (文件操作API v1)
+     */
+    fun MessageChain.dropMiraiInternalFlags(): MessageChain {
+        return asSequence().filterNot { it is InternalFlagOnlyMessage }.toMessageChain()
     }
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -8,12 +8,11 @@
  */
 
 @file:JvmBlockingBridge
-@file:Suppress("OVERLOADS_INTERFACE")
 
 package net.mamoe.mirai.contact.file
 
 import kotlinx.coroutines.flow.Flow
-import net.mamoe.kjbb.JvmBlockingBridge
+import me.him188.kotlin.jvm.blocking.bridge.JvmBlockingBridge
 import net.mamoe.mirai.contact.PermissionDeniedException
 import net.mamoe.mirai.utils.ExternalResource
 import net.mamoe.mirai.utils.JavaFriendlyAPI
@@ -29,6 +28,7 @@ import java.util.stream.Stream
  * @see AbsoluteFile
  * @see AbsoluteFileFolder
  */
+@Suppress("SEALED_INHERITOR_IN_DIFFERENT_MODULE")
 @NotStableForInheritance
 public interface AbsoluteFolder : AbsoluteFileFolder {
     /**
@@ -120,8 +120,18 @@ public interface AbsoluteFolder : AbsoluteFileFolder {
     public suspend fun resolveFolder(name: String): AbsoluteFolder?
 
     /**
+     * 获取一个已存在的 [AbsoluteFileFolder.id] 为 [id] 的子目录. 当该名称的子目录不存在时返回 `null`.
+     *
+     * @throws IllegalArgumentException 当 [id] 为空或无效时抛出
+     *
+     * @since 2.9.0
+     */
+    public suspend fun resolveFolderById(id: String): AbsoluteFolder?
+
+    /**
      * 精确获取 [AbsoluteFile.id] 为 [id] 的文件. 在目标文件不存在时返回 `null`. 当 [deep] 为 `true` 时还会深入子目录查找.
      */
+    @Suppress("OVERLOADS_INTERFACE", "ACTUAL_FUNCTION_WITH_DEFAULT_ARGUMENTS") // Keep JVM ABI
     @JvmOverloads
     public suspend fun resolveFileById(
         id: String,
@@ -173,12 +183,13 @@ public interface AbsoluteFolder : AbsoluteFileFolder {
      * - 也可以是 `sub/foo.txt` 表示该目录的子目录 "sub" 下的文件 "foo.txt".
      * - 或是绝对路径 `/sub/foo.txt` 表示根目录的 "sub" 目录下的文件 "foo.txt"
      *
-     * @param filepath 目标文件名
+     * @param filepath 目标文件名, 即上传到远程后的远程路径, 不是本地文件路径
      * @param content 文件内容
      * @param callback 下载进度回调, 传递的 `progression` 是已下载字节数.
      *
      * @throws PermissionDeniedException 当无管理员权限时抛出 (若群仅允许管理员上传)
      */
+    @Suppress("OVERLOADS_INTERFACE", "ACTUAL_FUNCTION_WITH_DEFAULT_ARGUMENTS") // Keep JVM ABI
     @JvmOverloads
     public suspend fun uploadNewFile(
         filepath: String,

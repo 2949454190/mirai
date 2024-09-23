@@ -1,10 +1,10 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 @file:JvmMultifileClass
@@ -16,7 +16,12 @@ package net.mamoe.mirai.message.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.message.code.CodableMessage
+import net.mamoe.mirai.message.data.visitor.MessageVisitor
 import net.mamoe.mirai.utils.MiraiExperimentalApi
+import net.mamoe.mirai.utils.MiraiInternalApi
+import kotlin.jvm.JvmField
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
 
 /**
  * QQ 自带表情
@@ -43,6 +48,11 @@ public data class Face(public val id: Int) : // used in delegation
 
     override fun equals(other: Any?): Boolean = other is Face && other.id == this.id
     override fun hashCode(): Int = id
+
+    @MiraiInternalApi
+    override fun <D, R> accept(visitor: MessageVisitor<D, R>, data: D): R {
+        return visitor.visitFace(this, data)
+    }
 
     //Auto generated
     @Suppress("NonAsciiCharacters", "unused", "SpellCheckingInspection", "all", "ObjectPropertyName")
@@ -556,9 +566,55 @@ public data class Face(public val id: Int) : // used in delegation
         public const val 嫌弃: Int = XIAN_QI
         public const val CHI_TANG: Int = 324
         public const val 吃糖: Int = CHI_TANG
+        public const val JING_XIA: Int = 325
+        public const val 惊吓: Int = JING_XIA
+        public const val SHENG_QI: Int = 326
+        public const val 生气: Int = SHENG_QI
+        public const val JIA_YI: Int = 327
+        public const val 加一: Int = JIA_YI
+        public const val CUO_HAO: Int = 328
+        public const val 错号: Int = CUO_HAO
+        public const val DUI_HAO: Int = 329
+        public const val 对号: Int = DUI_HAO
+        public const val WAN_CHENG: Int = 330
+        public const val 完成: Int = WAN_CHENG
+        public const val MING_BAI: Int = 331
+        public const val 明白: Int = MING_BAI
+        public const val JU_PAI_PAI: Int = 332
+        public const val 举牌牌: Int = JU_PAI_PAI
+        public const val YAN_HUA: Int = 333
+        public const val 烟花: Int = YAN_HUA
+        public const val HU_HU_SHENG_WEI: Int = 334
+        public const val 虎虎生威: Int = HU_HU_SHENG_WEI
+        public const val BAO_FU: Int = 336
+        public const val 豹富: Int = BAO_FU
+        public const val HUA_DUO_LIAN : Int = 337
+        public const val 花朵脸: Int = HUA_DUO_LIAN
+        public const val WO_XIANG_KAI_LE: Int = 338
+        public const val 我想开了: Int = WO_XIANG_KAI_LE
+        public const val TIAN_PING : Int = 339
+        public const val 舔屏: Int = TIAN_PING
+        public const val RE_HUA_LE: Int = 340
+        public const val 热化了: Int = RE_HUA_LE
+        public const val DA_ZHAO_HU : Int = 341
+        public const val 打招呼: Int = DA_ZHAO_HU
+        public const val SUAN_Q: Int = 342
+        public const val 酸Q: Int = SUAN_Q
+        public const val WO_FANG_LE : Int = 343
+        public const val 我方了: Int = WO_FANG_LE
+        public const val DA_YUAN_ZHONG: Int = 344
+        public const val 大怨种: Int = DA_YUAN_ZHONG
+        public const val HONG_BAO_DUO_DUO: Int = 345
+        public const val 红包多多: Int = HONG_BAO_DUO_DUO
+        public const val NI_ZHEN_BANG_BANG: Int = 346
+        public const val 你真棒棒: Int = NI_ZHEN_BANG_BANG
+        public const val DA_ZHAN_HONG_TU: Int = 347
+        public const val 大展宏兔: Int = DA_ZHAN_HONG_TU
+        public const val FU_LUO_BO: Int = 348
+        public const val 福萝卜: Int = 348
 
         @JvmField
-        public val names: Array<String> = Array(325) { "[表情]" }
+        public val names: Array<String> = Array(349) { "[表情]" }
 
         init {
             names[JING_YA] = "[惊讶]"
@@ -813,6 +869,30 @@ public data class Face(public val id: Int) : // used in delegation
             names[JU_JUE] = "[拒绝]"
             names[XIAN_QI] = "[嫌弃]"
             names[CHI_TANG] = "[吃糖]"
+            names[JING_XIA] = "[惊吓]"
+            names[SHENG_QI] = "[生气]"
+            names[JIA_YI] = "[加一]"
+            names[CUO_HAO] = "[错号]"
+            names[DUI_HAO] = "[对号]"
+            names[WAN_CHENG] = "[完成]"
+            names[MING_BAI] = "[明白]"
+            names[JU_PAI_PAI] = "[举牌牌]"
+            names[YAN_HUA] = "[烟花]"
+            names[YAN_HUA] = "[烟花]"
+            names[HU_HU_SHENG_WEI] = "[虎虎生威]"
+            names[BAO_FU] = "[豹富]"
+            names[HUA_DUO_LIAN] = "[花朵脸]"
+            names[WO_XIANG_KAI_LE] = "[我想开了]"
+            names[TIAN_PING] = "[舔屏]"
+            names[RE_HUA_LE] = "[热化了]"
+            names[DA_ZHAO_HU] = "[打招呼]"
+            names[SUAN_Q] = "[酸Q]"
+            names[WO_FANG_LE] = "[我方了]"
+            names[DA_YUAN_ZHONG] = "[大怨种]"
+            names[HONG_BAO_DUO_DUO] = "[红包多多]"
+            names[NI_ZHEN_BANG_BANG] = "[你真棒棒]"
+            names[DA_ZHAN_HONG_TU] = "[大展宏兔]"
+            names[FU_LUO_BO] = "[福萝卜]"
         }
     }
 }

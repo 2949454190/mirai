@@ -9,25 +9,28 @@
 
 package net.mamoe.mirai.internal.network.protocol.packet.login.wtlogin
 
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.internal.network.QQAndroidClient
 import net.mamoe.mirai.internal.network.miscBitMap
 import net.mamoe.mirai.internal.network.protocol.packet.*
 import net.mamoe.mirai.internal.network.protocol.packet.login.WtLogin
 import net.mamoe.mirai.internal.network.subAppId
 import net.mamoe.mirai.internal.network.subSigMap
+import net.mamoe.mirai.utils._writeTlvMap
 
 internal object WtLogin20 : WtLoginExt {
     operator fun invoke(
         client: QQAndroidClient
-    ) = WtLogin.Login.buildLoginOutgoingPacket(client, bodyType = 2) { sequenceId ->
+    ) = WtLogin.Login.buildLoginOutgoingPacket(client, encryptMethod = PacketEncryptType.Empty, remark = "20:dev-lock") { sequenceId ->
         writeSsoPacket(client, client.subAppId, WtLogin.Login.commandName, sequenceId = sequenceId) {
             writeOicqRequestPacket(client, commandId = 0x0810) {
                 writeShort(20) // subCommand
-                writeShort(4) // count of TLVs, probably ignored by server?
-                t8(2052)
-                t104(client.t104)
-                t116(client.miscBitMap, client.subSigMap)
-                t401(client.G) // (client.device.guid + "stMNokHgxZUGhsYp".toByteArray() + t402).md5()
+                _writeTlvMap {
+                    t8(2052)
+                    t104(client.t104)
+                    t116(client.miscBitMap, client.subSigMap)
+                    t401(client.G) // (client.device.guid + "stMNokHgxZUGhsYp".toByteArray() + t402).md5()
+                }
             }
         }
     }

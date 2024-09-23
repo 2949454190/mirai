@@ -1,39 +1,47 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2022 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 package net.mamoe.mirai.internal.network.components
 
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import net.mamoe.mirai.Mirai
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.network.component.ComponentKey
-import net.mamoe.mirai.internal.utils.crypto.ECDH
-import net.mamoe.mirai.internal.utils.crypto.ECDHInitialPublicKey
-import net.mamoe.mirai.internal.utils.crypto.ECDHWithPublicKey
-import net.mamoe.mirai.internal.utils.crypto.defaultInitialPublicKey
+import net.mamoe.mirai.internal.network.protocol.packet.createChannelProxy
+import net.mamoe.mirai.internal.spi.EncryptServiceContext
+import net.mamoe.mirai.internal.utils.actualCacheDir
+import net.mamoe.mirai.internal.utils.crypto.QQEcdh
+import net.mamoe.mirai.internal.utils.crypto.QQEcdhInitialPublicKey
+import net.mamoe.mirai.internal.utils.crypto.verify
+import net.mamoe.mirai.internal.utils.workingDirPath
 import net.mamoe.mirai.utils.MiraiLogger
+import net.mamoe.mirai.utils.buildTypeSafeMap
 import net.mamoe.mirai.utils.currentTimeSeconds
+import kotlin.time.Duration.Companion.seconds
 
 
 /**
- * Updater for updating [ECDHInitialPublicKey].
+ * Updater for updating [QQEcdhInitialPublicKey].
  */
 internal interface EcdhInitialPublicKeyUpdater {
     /**
-     * Refresh the [ECDHInitialPublicKey]
+     * Refresh the [QQEcdhInitialPublicKey]
      */
-    suspend fun refreshInitialPublicKeyAndApplyECDH()
+    suspend fun refreshInitialPublicKeyAndApplyEcdh()
 
-    fun getECDHWithPublicKey(): ECDHWithPublicKey
+    suspend fun initializeSsoSecureEcdh()
+
+    fun getQQEcdh(): QQEcdh
 
     companion object : ComponentKey<EcdhInitialPublicKeyUpdater>
 }
@@ -65,19 +73,15 @@ internal class EcdhInitialPublicKeyUpdaterImpl(
         val keyVer: Int
     )
 
-    companion object {
-        val json = Json {}
-    }
-
-    var ecdhWithPublicKey: ECDHWithPublicKey? = null
-    override fun getECDHWithPublicKey(): ECDHWithPublicKey {
-        if (ecdhWithPublicKey == null) {
-            error("Calling getECDHWithPublicKey without calling refreshInitialPublicKeyAndApplyECDH")
+    var qqEcdh: QQEcdh? = null
+    override fun getQQEcdh(): QQEcdh {
+        if (qqEcdh == null) {
+            error("Calling getQQEcdh without calling refreshInitialPublicKeyAndApplyEcdh")
         }
-        return ecdhWithPublicKey!!
+        return qqEcdh!!
     }
 
-    override suspend fun refreshInitialPublicKeyAndApplyECDH() {
+    override suspend fun refreshInitialPublicKeyAndApplyEcdh() {
 
         val initialPublicKey = kotlin.runCatching {
             val currentPublicKey = bot.client.ecdhInitialPublicKey
@@ -87,25 +91,43 @@ internal class EcdhInitialPublicKeyUpdaterImpl(
             } else {
                 logger.info("ECDH key is invalid, start to fetch ecdh public key from server.")
                 val respStr =
-                    Mirai.Http.get<String>("https://keyrotate.qq.com/rotate_key?cipher_suite_ver=305&uin=${bot.client.uin}")
-                val resp = json.decodeFromString(ServerRespPOJO.serializer(), respStr)
+                    withTimeout(10.seconds) {
+                        bot.components[HttpClientProvider].getHttpClient()
+                            .get("https://keyrotate.qq.com/rotate_key?cipher_suite_ver=305&uin=${bot.client.uin}")
+                            .bodyAsText()
+                    }
+                val resp = Json.decodeFromString(ServerRespPOJO.serializer(), respStr)
                 resp.pubKeyMeta.let { meta ->
-                    val isValid = ECDH.verifyPublicKey(
-                        version = meta.keyVer,
-                        publicKey = meta.pubKey,
-                        publicKeySign = meta.pubKeySign
-                    )
-                    check(isValid) { "Ecdh public key which from server is invalid" }
+                    val key = QQEcdhInitialPublicKey(meta.keyVer, meta.pubKey, currentTimeSeconds() + resp.querySpan)
+                    check(key.verify(meta.pubKeySign)) { "Ecdh public key which from server is invalid" }
                     logger.info("Successfully fetched ecdh public key from server.")
-                    ECDHInitialPublicKey(meta.keyVer, meta.pubKey, currentTimeSeconds() + resp.querySpan)
+                    key
                 }
             }
         }.getOrElse {
             logger.error("Failed to fetch ECDH public key from server, using default key instead", it)
-            defaultInitialPublicKey
+            QQEcdhInitialPublicKey.default
         }
         bot.client.ecdhInitialPublicKey = initialPublicKey
-        ecdhWithPublicKey = ECDHWithPublicKey(initialPublicKey)
+        qqEcdh = QQEcdh(initialPublicKey)
+    }
+
+    override suspend fun initializeSsoSecureEcdh() {
+        val encryptWorker = bot.encryptServiceOrNull
+
+        if (encryptWorker == null) {
+            logger.info("EncryptService SPI is not provided, sso secure ecdh will not be initialized.")
+            return
+        }
+
+        encryptWorker.initialize(EncryptServiceContext(bot.id, buildTypeSafeMap {
+            set(EncryptServiceContext.KEY_CHANNEL_PROXY, createChannelProxy(bot))
+            set(EncryptServiceContext.KEY_DEVICE_INFO, bot.client.device)
+            set(EncryptServiceContext.KEY_BOT_PROTOCOL, bot.configuration.protocol)
+            set(EncryptServiceContext.KEY_QIMEI36, bot.client.qimei36 ?: "")
+            set(EncryptServiceContext.KEY_BOT_WORKING_DIR, bot.configuration.workingDirPath)
+            set(EncryptServiceContext.KEY_BOT_CACHING_DIR, bot.configuration.actualCacheDir().absolutePath)
+        }))
     }
 
 

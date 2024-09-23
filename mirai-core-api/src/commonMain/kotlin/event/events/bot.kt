@@ -1,15 +1,16 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
- *  此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
- *  Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
+ * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
+ * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
  *
- *  https://github.com/mamoe/mirai/blob/master/LICENSE
+ * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
 @file:Suppress("unused", "FunctionName")
 @file:JvmMultifileClass
 @file:JvmName("BotEventsKt")
+@file:OptIn(MiraiInternalApi::class)
 
 package net.mamoe.mirai.event.events
 
@@ -18,6 +19,8 @@ import net.mamoe.mirai.event.AbstractEvent
 import net.mamoe.mirai.internal.network.Packet
 import net.mamoe.mirai.utils.MiraiExperimentalApi
 import net.mamoe.mirai.utils.MiraiInternalApi
+import kotlin.jvm.JvmMultifileClass
+import kotlin.jvm.JvmName
 
 // note: 若你使用 IntelliJ IDEA, 按 alt + 7 可打开结构
 
@@ -45,6 +48,7 @@ public sealed class BotOfflineEvent : BotEvent, AbstractEvent() {
      *
      * 主动广播这个事件也可以让 [Bot] 离线, 但不建议这么做. 建议调用 [Bot.close].
      */
+    @OptIn(MiraiExperimentalApi::class)
     public data class Active(
         public override val bot: Bot,
         public override val cause: Throwable?
@@ -74,6 +78,7 @@ public sealed class BotOfflineEvent : BotEvent, AbstractEvent() {
     /**
      * 被服务器断开
      */
+    @OptIn(MiraiExperimentalApi::class)
     @MiraiInternalApi("This is very experimental and might be changed")
     public data class MsfOffline @MiraiInternalApi public constructor(
         public override val bot: Bot,
@@ -89,7 +94,9 @@ public sealed class BotOfflineEvent : BotEvent, AbstractEvent() {
     /**
      * 因网络问题而掉线
      */
-    public data class Dropped @MiraiInternalApi public constructor(
+    @OptIn(MiraiExperimentalApi::class)
+    public data class Dropped
+    @MiraiInternalApi public constructor(
         public override val bot: Bot,
         public override val cause: Throwable?
     ) : BotOfflineEvent(), Packet, BotPassiveEvent, CauseAware {
@@ -103,6 +110,7 @@ public sealed class BotOfflineEvent : BotEvent, AbstractEvent() {
     /**
      * 服务器主动要求更换另一个服务器
      */
+    @OptIn(MiraiExperimentalApi::class)
     @MiraiInternalApi
     public data class RequireReconnect @MiraiInternalApi public constructor(
         public override val bot: Bot, override val cause: Throwable?,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,7 +9,7 @@
 
 package net.mamoe.mirai.internal.network.components
 
-import kotlinx.io.core.toByteArray
+import io.ktor.utils.io.core.*
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.Bot
 import net.mamoe.mirai.internal.BotAccount
@@ -19,15 +19,15 @@ import net.mamoe.mirai.internal.network.component.ComponentKey
 import net.mamoe.mirai.internal.network.getRandomByteArray
 import net.mamoe.mirai.internal.network.protocol.packet.login.wtlogin.get_mpasswd
 import net.mamoe.mirai.internal.utils.accountSecretsFile
-import net.mamoe.mirai.internal.utils.crypto.ECDHInitialPublicKey
+import net.mamoe.mirai.internal.utils.crypto.QQEcdhInitialPublicKey
 import net.mamoe.mirai.internal.utils.crypto.TEA
-import net.mamoe.mirai.internal.utils.crypto.defaultInitialPublicKey
 import net.mamoe.mirai.internal.utils.io.ProtoBuf
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.internal.utils.io.serialization.toByteArray
 import net.mamoe.mirai.utils.*
-import java.io.File
-import java.util.concurrent.CopyOnWriteArraySet
+import kotlin.jvm.Synchronized
+import kotlin.jvm.Volatile
+import kotlin.random.Random
 
 /**
  * For a [Bot].
@@ -36,10 +36,10 @@ import java.util.concurrent.CopyOnWriteArraySet
  * @see FileCacheAccountSecretsManager
  * @see CombinedAccountSecretsManager
  */
-internal interface AccountSecretsManager {
+internal interface AccountSecretsManager : Cacheable {
     fun saveSecrets(account: BotAccount, secrets: AccountSecrets)
     fun getSecrets(account: BotAccount): AccountSecrets?
-    fun invalidate()
+    override fun invalidate()
 
     companion object : ComponentKey<AccountSecretsManager>
 }
@@ -73,7 +73,7 @@ internal interface AccountSecrets {
 
     var tgtgtKey: ByteArray
     val randomKey: ByteArray
-    var ecdhInitialPublicKey: ECDHInitialPublicKey
+    var ecdhInitialPublicKey: QQEcdhInitialPublicKey
 }
 
 
@@ -87,13 +87,11 @@ internal data class AccountSecretsImpl(
     override var ksid: ByteArray,
     override var tgtgtKey: ByteArray,
     override val randomKey: ByteArray,
-    override var ecdhInitialPublicKey: ECDHInitialPublicKey,
+    override var ecdhInitialPublicKey: QQEcdhInitialPublicKey,
 ) : AccountSecrets, ProtoBuf {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as AccountSecretsImpl
+        if (!isSameType(this, other)) return false
 
         if (loginExtraData != other.loginExtraData) return false
         if (wLoginSigInfoField != other.wLoginSigInfoField) return false
@@ -132,18 +130,18 @@ internal fun AccountSecretsImpl(
 }
 
 internal fun AccountSecretsImpl(
-    device: DeviceInfo, account: BotAccount,
+    device: DeviceInfo,
 ): AccountSecretsImpl {
     return AccountSecretsImpl(
-        loginExtraData = CopyOnWriteArraySet(),
+        loginExtraData = ConcurrentSet(),
         wLoginSigInfoField = null,
         G = device.guid,
         dpwd = get_mpasswd().toByteArray(),
         randSeed = EMPTY_BYTE_ARRAY,
         ksid = EMPTY_BYTE_ARRAY,
-        tgtgtKey = (account.passwordMd5 + ByteArray(4) + account.id.toInt().toByteArray()).md5(),
+        tgtgtKey = (Random.nextBytes(16) + device.guid).md5(),
         randomKey = getRandomByteArray(16),
-        ecdhInitialPublicKey = defaultInitialPublicKey
+        ecdhInitialPublicKey = QQEcdhInitialPublicKey.default
     )
 }
 
@@ -151,7 +149,7 @@ internal fun AccountSecretsImpl(
 internal fun AccountSecretsManager.getSecretsOrCreate(account: BotAccount, device: DeviceInfo): AccountSecrets {
     var secrets = getSecrets(account)
     if (secrets == null) {
-        secrets = AccountSecretsImpl(device, account)
+        secrets = AccountSecretsImpl(device)
         saveSecrets(account, secrets)
     }
     return secrets
@@ -177,7 +175,7 @@ internal class MemoryAccountSecretsManager : AccountSecretsManager {
 
 
 internal class FileCacheAccountSecretsManager(
-    val file: File,
+    val file: MiraiFile,
     val logger: MiraiLogger,
 ) : AccountSecretsManager {
     @Synchronized
@@ -195,7 +193,7 @@ internal class FileCacheAccountSecretsManager(
     private fun getSecretsImpl(account: BotAccount): AccountSecrets? {
         if (!file.exists()) return null
         val loaded = kotlin.runCatching {
-            TEA.decrypt(file.readBytes(), account.passwordMd5).loadAs(AccountSecretsImpl.serializer())
+            TEA.decrypt(file.readBytes(), account.accountSecretsKey).loadAs(AccountSecretsImpl.serializer())
         }.getOrElse { e ->
             if (e.message == "Field 'ecdhInitialPublicKey' is required for type with serial name 'net.mamoe.mirai.internal.network.components.AccountSecretsImpl', but it was missing") {
                 logger.info { "Detected old account secrets, invalidating..." }
@@ -216,11 +214,11 @@ internal class FileCacheAccountSecretsManager(
     }
 
     companion object {
-        fun saveSecretsToFile(file: File, account: BotAccount, secrets: AccountSecrets) {
+        fun saveSecretsToFile(file: MiraiFile, account: BotAccount, secrets: AccountSecrets) {
             file.writeBytes(
                 TEA.encrypt(
                     AccountSecretsImpl(secrets).toByteArray(AccountSecretsImpl.serializer()),
-                    account.passwordMd5
+                    account.accountSecretsKey
                 )
             )
         }
@@ -250,11 +248,13 @@ internal class CombinedAccountSecretsManager(
  * Create a [CombinedAccountSecretsManager] with [MemoryAccountSecretsManager] as primary and [FileCacheAccountSecretsManager] as an alternative.
  */
 internal fun BotConfiguration.createAccountsSecretsManager(logger: MiraiLogger): AccountSecretsManager {
-    return CombinedAccountSecretsManager(
-        MemoryAccountSecretsManager(),
-        FileCacheAccountSecretsManager(
-            accountSecretsFile(),
-            logger
+    @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+    return if (accountSecrets) {
+        CombinedAccountSecretsManager(
+            MemoryAccountSecretsManager(),
+            FileCacheAccountSecretsManager(accountSecretsFile(), logger)
         )
-    )
+    } else {
+        MemoryAccountSecretsManager()
+    }
 }

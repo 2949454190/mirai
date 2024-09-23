@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -9,9 +9,9 @@
 
 package net.mamoe.mirai.internal.network.notice.group
 
-import kotlinx.io.core.readUInt
-import kotlinx.io.core.readUShort
+import io.ktor.utils.io.core.*
 import net.mamoe.mirai.contact.NormalMember
+import net.mamoe.mirai.contact.UserOrBot
 import net.mamoe.mirai.contact.getMember
 import net.mamoe.mirai.data.GroupHonorType
 import net.mamoe.mirai.event.events.*
@@ -28,10 +28,10 @@ import net.mamoe.mirai.internal.network.protocol.data.jce.MsgType0x210
 import net.mamoe.mirai.internal.network.protocol.data.proto.Submsgtype0x122
 import net.mamoe.mirai.internal.network.protocol.data.proto.Submsgtype0x27
 import net.mamoe.mirai.internal.network.protocol.data.proto.TroopTips0x857
-import net.mamoe.mirai.internal.utils._miraiContentToString
 import net.mamoe.mirai.internal.utils.io.serialization.loadAs
 import net.mamoe.mirai.internal.utils.parseToMessageDataList
 import net.mamoe.mirai.utils.*
+import kotlin.jvm.JvmName
 
 internal class GroupNotificationProcessor(
     private val logger: MiraiLogger,
@@ -219,14 +219,14 @@ internal class GroupNotificationProcessor(
         markAsConsumed()
 
         buf.read {
-            val operatorUin = readUInt().toLong()
+            val operatorUin = readInt().toUInt().toLong()
             if (operatorUin == bot.id) return
             val operator = group[operatorUin] ?: return
-            readUInt().toLong() // time
-            val length = readUShort().toInt()
+            readInt().toUInt().toLong() // time
+            val length = readShort().toUShort().toInt()
             repeat(length) {
-                val target = readUInt().toLong()
-                val timeSeconds = readUInt()
+                val target = readInt().toUInt().toLong()
+                val timeSeconds = readInt().toUInt()
                 collected += handleMuteMemberPacket(bot, group, operator, target, timeSeconds.toInt())
             }
         }
@@ -240,7 +240,7 @@ internal class GroupNotificationProcessor(
     ) = data.context {
         markAsConsumed()
         buf.read {
-            val operator = group[readUInt().toLong()] ?: return
+            val operator = group[readInt().toUInt().toLong()] ?: return
             val new = readInt() == 0
             if (group.settings.isAnonymousChatEnabledField == new) return
 
@@ -316,6 +316,7 @@ internal class GroupNotificationProcessor(
         }
     }
 
+
     /**
      * @see NudgeEvent
      * @see MemberHonorChangeEvent
@@ -325,30 +326,68 @@ internal class GroupNotificationProcessor(
     private fun NoticePipelineContext.processGeneralGrayTip(
         data: MsgType0x2DC,
     ) = data.context {
+
         val grayTip = buf.loadAs(TroopTips0x857.NotifyMsgBody.serializer(), 1).optGeneralGrayTip
         markAsConsumed()
         when (grayTip?.templId) {
             // 群戳一戳
             10043L, 1133L, 1132L, 1134L, 1135L, 1136L -> {
+                
+                fun String.findUser(): UserOrBot? {
+                    return if (this == bot.id.toString()) {
+                        group.botAsMember
+                    } else {
+                        this.findMember() ?: this.findFriendOrStranger()
+                    }
+                }
+                
                 // group nudge
                 // 预置数据，服务器将不会提供己方已知消息
                 val action = grayTip.msgTemplParam["action_str"].orEmpty()
-                val from = grayTip.msgTemplParam["uin_str1"]?.findMember() ?: group.botAsMember
-                val target = grayTip.msgTemplParam["uin_str2"]?.findMember() ?: group.botAsMember
+                val from = grayTip.msgTemplParam["uin_str1"]
+                val target = grayTip.msgTemplParam["uin_str2"]
                 val suffix = grayTip.msgTemplParam["suffix_str"].orEmpty()
 
-                collected += NudgeEvent(
-                    from = if (from.id == bot.id) bot else from,
-                    target = if (target.id == bot.id) bot else target,
-                    action = action,
-                    suffix = suffix,
-                    subject = group,
+                val fromUser = from?.findUser()
+                val targetUser = target?.findUser()
+
+                if (fromUser == null || targetUser == null) {
+                    markNotConsumed()
+                    logger.debug {
+                        "Cannot find from or target in Transformers528 0x14 template\ntemplId=${grayTip.templId}\nPermList=${grayTip.msgTemplParam.structureToString()}"
+                    }
+                } else {
+                    collected += NudgeEvent(
+                            from = fromUser,
+                            target = targetUser,
+                            action = action,
+                            suffix = suffix,
+                            subject = group,
+                    )
+                }
+            }
+            // 群签到/打卡
+            10036L, 10038L -> {
+                val user = grayTip.msgTemplParam["mqq_uin"]?.findMember() ?: group.botAsMember
+                val sign = grayTip.msgTemplParam["user_sign"].orEmpty()
+                val img = grayTip.msgTemplParam["rank_img"]
+                val rank = """今日第(\d+)个打卡""".toRegex().matchEntire(sign)?.groupValues?.get(1)?.toInt()
+
+                collected += SignEvent(
+                    user = user,
+                    sign = sign,
+                    hasRank = img != null,
+                    rank = rank
                 )
             }
             // 龙王
-            10093L, 1053L, 1054L -> {
-                val now: NormalMember = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
-                val previous: NormalMember? = grayTip.msgTemplParam["uin_last"]?.findMember()
+            10093L, 10094L, 1053L, 1054L, 1103L -> {
+                val now = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
+                val previous = grayTip.msgTemplParam["uin_last"]?.findMember()
+
+                val lastTalkative = group.lastTalkative
+                if (lastTalkative == now) return // duplicate
+                if (!group.casLastTalkative(lastTalkative, now)) return
 
                 if (previous == null) {
                     collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.TALKATIVE))
@@ -358,11 +397,47 @@ internal class GroupNotificationProcessor(
                     collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.TALKATIVE))
                 }
             }
+            // 群聊之火
+            1052L, 1129L -> {
+                val now = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
+
+                now.info.honors += GroupHonorType.PERFORMER
+                collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.PERFORMER))
+            }
+            // 群聊炽焰
+            1055L -> {
+                val now = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
+
+                now.info.honors -= GroupHonorType.PERFORMER
+                now.info.honors += GroupHonorType.LEGEND
+                collect(MemberHonorChangeEvent.Lose(now, GroupHonorType.PERFORMER))
+                collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.LEGEND))
+            }
+            // 快乐源泉
+            1067L -> {
+                val now = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
+
+                now.info.honors += GroupHonorType.EMOTION
+                collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.EMOTION))
+            }
+            // 善财福禄寿
+            10111L -> {
+                val now = grayTip.msgTemplParam["uin"]?.findMember() ?: group.botAsMember
+                val previous = grayTip.msgTemplParam["uin_last"]?.findMember()
+
+                if (previous == null) {
+                    collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.RED_PACKET))
+                } else {
+                    // 善财福禄寿 也是唯一的, 也许要加 新事件
+                    collect(MemberHonorChangeEvent.Lose(previous, GroupHonorType.RED_PACKET))
+                    collect(MemberHonorChangeEvent.Achieve(now, GroupHonorType.RED_PACKET))
+                }
+            }
             //
             else -> {
                 markNotConsumed()
                 logger.debug {
-                    "Unknown Transformers528 0x14 template\ntemplId=${grayTip?.templId}\nPermList=${grayTip?.msgTemplParam?._miraiContentToString()}"
+                    "Unknown Transformers528 0x14 template\ntemplId=${grayTip?.templId}\nPermList=${grayTip?.msgTemplParam?.structureToString()}"
                 }
             }
         }

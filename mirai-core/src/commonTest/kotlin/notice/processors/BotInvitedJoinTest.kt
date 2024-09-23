@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 Mamoe Technologies and contributors.
+ * Copyright 2019-2023 Mamoe Technologies and contributors.
  *
  * 此源代码的使用受 GNU AFFERO GENERAL PUBLIC LICENSE version 3 许可证的约束, 可以在以下链接找到该许可证.
  * Use of this source code is governed by the GNU AGPLv3 license that can be found through the following link.
@@ -7,57 +7,56 @@
  * https://github.com/mamoe/mirai/blob/dev/LICENSE
  */
 
-@file:JvmBlockingBridge
-
 package net.mamoe.mirai.internal.notice.processors
 
-import net.mamoe.kjbb.JvmBlockingBridge
 import net.mamoe.mirai.contact.MemberPermission
 import net.mamoe.mirai.event.events.BotInvitedJoinGroupRequestEvent
 import net.mamoe.mirai.event.events.BotJoinGroupEvent
 import net.mamoe.mirai.internal.QQAndroidBot
 import net.mamoe.mirai.internal.contact.GroupImpl
 import net.mamoe.mirai.internal.network.components.NoticeProcessorPipelineImpl
-import org.junit.jupiter.api.Test
+import net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg
+import net.mamoe.mirai.internal.test.runBlockingUnit
+import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 internal class BotInvitedJoinTest : AbstractNoticeProcessorTest() {
     @Test
-    suspend fun `invited join`() {
+    fun `invited join`() = runBlockingUnit {
         suspend fun runTest() = use {
 
-            net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.StructMsg(
+            Structmsg.StructMsg(
                 version = 1,
                 msgType = 2,
                 msgSeq = 1630,
                 msgTime = 1630,
                 reqUin = 1230,
-                msg = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsg(
+                msg = Structmsg.SystemMsg(
                     subType = 1,
                     msgTitle = "邀请加群",
                     msgDescribe = "邀请你加入 %group_name%",
                     actions = mutableListOf(
-                        net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgAction(
+                        Structmsg.SystemMsgAction(
                             name = "拒绝",
                             result = "已拒绝",
-                            actionInfo = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgActionInfo(
+                            actionInfo = Structmsg.SystemMsgActionInfo(
                                 type = 12,
                                 groupCode = 2230203,
                             ),
                             detailName = "拒绝",
-                        ), net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgAction(
+                        ), Structmsg.SystemMsgAction(
                             name = "同意",
                             result = "已同意",
-                            actionInfo = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgActionInfo(
+                            actionInfo = Structmsg.SystemMsgActionInfo(
                                 type = 11,
                                 groupCode = 2230203,
                             ),
                             detailName = "同意",
-                        ), net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgAction(
+                        ), Structmsg.SystemMsgAction(
                             name = "忽略",
                             result = "已忽略",
-                            actionInfo = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.SystemMsgActionInfo(
+                            actionInfo = Structmsg.SystemMsgActionInfo(
                                 type = 14,
                                 groupCode = 2230203,
                             ),
@@ -68,10 +67,10 @@ internal class BotInvitedJoinTest : AbstractNoticeProcessorTest() {
                     actionUin = 1230001,
                     groupMsgType = 2,
                     groupInviterRole = 1,
-                    groupInfo = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.GroupInfo(
+                    groupInfo = Structmsg.GroupInfo(
                         appPrivilegeFlag = 67698880,
                     ),
-                    msgInviteExtinfo = net.mamoe.mirai.internal.network.protocol.data.proto.Structmsg.MsgInviteExt(
+                    msgInviteExtinfo = Structmsg.MsgInviteExt(
                     ),
                     reqUinNick = "user3",
                     groupName = "testtest",
@@ -101,11 +100,11 @@ internal class BotInvitedJoinTest : AbstractNoticeProcessorTest() {
     }
 
     @Test
-    suspend fun `invited join, accepted`() {
+    fun `invited join  accepted`() = runBlockingUnit {
         // https://github.com/mamoe/mirai/issues/1213
         suspend fun runTest() = use(
-            createContext = { bot, attributes ->
-                object : NoticeProcessorPipelineImpl.ContextImpl(bot, attributes) {
+            createContext = { attributes ->
+                object : NoticeProcessorPipelineImpl.ContextImpl(attributes) {
                     override suspend fun QQAndroidBot.addNewGroupByCode(code: Long): GroupImpl {
                         assertEquals(2230203, code)
                         return bot.addGroup(2230203, 1230001, name = "testtest").apply {
@@ -152,10 +151,10 @@ internal class BotInvitedJoinTest : AbstractNoticeProcessorTest() {
 
 
     @Test
-    suspend fun `invitation accepted`() {
+    fun `invitation accepted`() = runBlockingUnit {
         suspend fun runTest() =
-            use(createContext = { bot, attributes ->
-                object : NoticeProcessorPipelineImpl.ContextImpl(bot, attributes) {
+            use(createContext = { attributes ->
+                object : NoticeProcessorPipelineImpl.ContextImpl(attributes) {
                     override suspend fun QQAndroidBot.addNewGroupByCode(code: Long): GroupImpl {
                         assertEquals(2230203, code)
                         return bot.addGroup(2230203, 1230002, name = "testtest").apply {

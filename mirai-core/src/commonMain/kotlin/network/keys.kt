@@ -9,9 +9,7 @@
 
 package net.mamoe.mirai.internal.network
 
-import kotlinx.io.core.BytePacketBuilder
-import kotlinx.io.core.ByteReadPacket
-import kotlinx.io.core.writeFully
+import io.ktor.utils.io.core.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import net.mamoe.mirai.internal.AbstractBot
@@ -73,6 +71,17 @@ internal fun BytePacketBuilder.writeLoginExtraData(loginExtraData: LoginExtraDat
         writeFully(ip)
         writeInt(time)
         writeInt(version)
+    }
+}
+
+@Serializable
+internal class QRCodeLoginData(
+    val tmpPwd: ByteArray, // get from wtlogin.trans_emp, don't use client.wLoginSigInfo.encryptA1
+    val noPicSig: ByteArray, // get from wtlogin.trans_emp, don't use client.wLoginSigInfo.encryptA1
+    val tgtQR: ByteArray,
+) {
+    override fun toString(): String {
+        return "QRCodeLoginData(tmpPwd=${tmpPwd.toUHexString()}, noPicSig=${noPicSig.toUHexString()}, tgtQR=${tgtQR.toUHexString()})"
     }
 }
 
